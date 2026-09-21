@@ -15,7 +15,7 @@ description = "Binance Web3 API key assigned to a variable"
 regex = '''(?i)BINANCE_WEB3_API_KEY["']?[ \t]*[=:][ \t]*["']?[A-Za-z0-9+/=_\-]{8,}'''
 keywords = ["binance_web3_api_key"]
 
-[[allowlists]]
+[allowlist]
 description = "Variable names with no value (env templates), captured by the generic rule across a newline"
 regexTarget = "secret"
 regexes = ['''^BINANCE_WEB3_[A-Z_]+=$''']
