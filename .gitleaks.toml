@@ -15,7 +15,16 @@ description = "Binance Web3 API key assigned to a variable"
 regex = '''(?i)BINANCE_WEB3_API_KEY["']?[ \t]*[=:][ \t]*["']?[A-Za-z0-9+/=_\-]{8,}'''
 keywords = ["binance_web3_api_key"]
 
+[[rules]]
+id = "postgres-connection-string-password"
+description = "Postgres connection string with an embedded password assigned to DATABASE_URL"
+regex = '''(?i)DATABASE_URL["']?[ \t]*[=:][ \t]*["']?postgres(?:ql)?://[^:@/\s"']+:[^@/\s"']{3,}@[^/\s"']+'''
+keywords = ["database_url"]
+
 [allowlist]
 description = "Variable names with no value (env templates), captured by the generic rule across a newline"
 regexTarget = "secret"
-regexes = ['''^BINANCE_WEB3_[A-Z_]+=$''']
+regexes = [
+  '''^BINANCE_WEB3_[A-Z_]+=$''',
+  '''^DATABASE_URL=$''',
+]
