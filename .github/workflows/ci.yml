@@ -84,6 +84,12 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Dependency audit (high/critical)
+        run: pnpm audit --audit-level=high
+
       - name: Typecheck
         run: pnpm typecheck
 
