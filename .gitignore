@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+*.log
+.DS_Store
+
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# raw provider evidence stays local; only evidence/manifest.jsonl is committed
+evidence/raw/
