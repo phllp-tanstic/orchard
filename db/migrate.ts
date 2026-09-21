@@ -44,11 +44,24 @@ function requireEnv(name: string): string {
   return value;
 }
 
+function assertDestructiveMigrationAllowed(): void {
+  if (process.env["ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION"] !== "1") {
+    throw new Error(
+      "Refusing to run `migrate down`: set ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION=1 to allow it. " +
+        "This is a hard-to-reverse operation (DEC-013) - never set it in a real environment " +
+        "outside a throwaway/CI database.",
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const direction = process.argv[2];
   if (direction !== "up" && direction !== "down") {
     console.error("Usage: tsx db/migrate.ts <up|down> [count]");
     process.exit(1);
+  }
+  if (direction === "down") {
+    assertDestructiveMigrationAllowed();
   }
   const countArg = process.argv[3];
   const count = countArg !== undefined ? Number(countArg) : undefined;

@@ -98,6 +98,8 @@ jobs:
 
       - name: Migration down
         run: pnpm migrate:down
+        env:
+          ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION: "1"
 
       - name: Migration up again (idempotency check)
         run: pnpm migrate:up
