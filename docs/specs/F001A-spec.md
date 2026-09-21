@@ -16,6 +16,8 @@ Prove, from live Binance Web3 API data, which tokenized-stock representations ex
 | DEC-008 | License Apache-2.0. Copyright holder: phllp-tanstic |
 | DEC-009 | Repository is public from the first commit |
 | DEC-013 | Spec Amendment A2, hardening set: terminal-event concurrency, gitleaks exact-value allowlist, Node 24, Postgres bound to localhost, `migrate down` guarded by an env var, `rwa.*_snapshot` append-only plus `binance_chain_id` widened to text, format/audit CI gates, `tokenToShareRatio` validation. See section 11 |
+| DEC-014 | `orchard_migrator` bootstrap: migration 007 creates the role and reassigns object ownership to it, independent of whichever role runs migrations. See section 11 |
+| DEC-015 | Bump `vitest` to `5.0.1`; clears the critical/high `pnpm audit --audit-level=high` findings from DEC-013's CI gate |
 
 ## 3. Scope
 
@@ -46,7 +48,7 @@ Prove, from live Binance Web3 API data, which tokenized-stock representations ex
 ### T3. `packages/evidence` and `db/`
 - Migrations: SQL files run by `node-pg-migrate`, with up and down.
 - Schemas: `evidence` and `rwa`. **Nothing in `public`** (Supabase exposes `public` through its auto-generated API).
-- Roles: `orchard_migrator` owns objects. `orchard_app` has INSERT and SELECT on evidence tables, no UPDATE, DELETE or TRUNCATE. A trigger additionally rejects UPDATE, DELETE, and TRUNCATE (statement-level) on evidence tables, with no exceptions, including for the owner role. Enable Row Level Security on every table. **Open gap (DEC-013 A2):** no migration actually creates `orchard_migrator` - see docs/DECISIONS.md DEC-014 (open).
+- Roles: `orchard_migrator` owns objects. `orchard_app` has INSERT and SELECT on evidence tables, no UPDATE, DELETE or TRUNCATE. A trigger additionally rejects UPDATE, DELETE, and TRUNCATE (statement-level) on evidence tables, with no exceptions, including for the owner role. Enable Row Level Security on every table. **Amended by DEC-014:** migration 007 creates `orchard_migrator` explicitly and reassigns ownership of every evidence/rwa object to it, closing the gap DEC-013 A2 surfaced (no earlier migration created this role).
 - Tables (minimum) — **amended by DEC-010 (Spec Amendment A1)**, further amended by **DEC-013 (Spec Amendment A2)**:
   - `evidence.probe_run`: immutable header. id, started_at, git_sha, client_version. No status column; a header row is never mutated after insert.
   - `evidence.probe_run_event`: append-only. id, probe_run_id, status (`RUNNING`/`COMPLETE`/`INCOMPLETE`/`FAILED`), incomplete_reasons (jsonb, nullable), recorded_at. The header and its `RUNNING` event are inserted in one transaction. Once a terminal event (`COMPLETE`/`INCOMPLETE`/`FAILED`) exists for a run, a trigger rejects any further event for that run (no status regression, no re-opening a finished run). **DEC-013 A2:** the original trigger-only check raced under concurrent writers (it cannot see another transaction's uncommitted terminal event); a partial unique index (`probe_run_id` where status is terminal) now enforces at most one terminal event per run at the storage layer, and the trigger serializes inserts per run with `pg_advisory_xact_lock` so the check runs against committed state.
@@ -116,7 +118,7 @@ UI, quotes, simulation, wallet, signing transactions, broadcast, intents, giftin
 - DEC-005: assetType scope, stock only vs ETF and Pre-IPO (trigger: F001-A results).
 - DEC-006: deployment region and end-user eligibility gating (before M4).
 - DEC-007: confirmation semantics under a ~30 s quote TTL (before M4).
-- DEC-014: this spec (section 3, T3) names an `orchard_migrator` role that owns objects, but no migration creates it. Options are listed, not chosen, in docs/DECISIONS.md (trigger: before any migration relies on `orchard_migrator` existing as a distinct role, e.g. before Supabase project creation).
+- ~~DEC-014~~: resolved (APPROVED) - see section 11 and docs/DECISIONS.md.
 
 ## 10. Completion report (exact format)
 
@@ -145,6 +147,17 @@ inline at the section it amends; this section is the index.
 7. **CI gates**: `pnpm format:check` and `pnpm audit --audit-level=high` added to `ci.yml`.
 8. **`tokenToShareRatio` validation** (section 3, T4): an empty, non-numeric, zero, or negative
    ratio is recorded as a report `invalidRatios` entry and an incompleteReason, never thrown or
-   written to a `NUMERIC` column.
-9. **Open gap surfaced, not resolved**: DEC-014 (section 9) - no migration creates the
-   `orchard_migrator` role this spec names as the object owner.
+   written to a `NUMERIC` column. **Further amended by DEC-014/DEC-015's approval message:**
+   the value must first match a strict plain-decimal pattern
+   (`^(0|[1-9]\d*)(\.\d+)?$`) - no sign, exponent, alternate base, or digit-group separator.
+   `0x10`, `0b11`, `1e5`, and `1_000` all parse as numbers in some context but are now anomalies
+   too, not just empty/zero/negative.
+9. **Open gap surfaced, then resolved as DEC-014** (section 9): no migration created the
+   `orchard_migrator` role this spec names as the object owner. Migration 007 creates it and
+   reassigns ownership of every evidence/rwa object to it, independent of whichever role runs
+   migrations - see docs/DECISIONS.md DEC-014 for the option chosen and why the role-drop guard
+   in `007_orchard_migrator_bootstrap.down.sql` checks `rolsuper` rather than the connecting
+   role's name.
+10. **`vitest` bumped to `5.0.1` (DEC-015)**: clears the critical/high `pnpm audit
+    --audit-level=high` findings item 7 above introduced as a CI gate (both were dev-only,
+    transitive through `vitest@2.1.9`). All tests pass unchanged.

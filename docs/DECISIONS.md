@@ -109,7 +109,56 @@ Status vocabulary for decisions: `APPROVED`, `OPEN`.
      stored; an invalid ratio is recorded as a report `invalidRatios` entry
      and an incompleteReason, marking the run `INCOMPLETE` - never a crash or
      an invalid `NUMERIC`.
-  9. Surfaced but not resolved by this decision: DEC-014 below.
+  9. Surfaced but not resolved by this decision: DEC-014 below (resolved
+     separately - see the Approved section).
+
+### DEC-015
+
+- **Status:** APPROVED
+- **Date:** 2026-09-21
+- **Decision:** Bump `vitest` to `5.0.1` (major version, `pnpm-lock.yaml`
+  regenerated). Clears the critical and high advisories `pnpm audit
+--audit-level=high` was reporting against `vitest@2.1.9`/its transitive
+  `vite` dependency (both dev-only: a vitest UI-server file-read/execute
+  advisory, GHSA-5xrq-8626-4rwp, and a vite `server.fs.deny` bypass,
+  GHSA-fx2h-pf6j-xcff). `pnpm audit --audit-level=high` (added to `ci.yml`
+  under DEC-013) now reports no known vulnerabilities. All existing tests
+  pass unchanged under vitest 5; no test code needed to change.
+
+### DEC-014
+
+- **Status:** APPROVED
+- **Date:** 2026-09-21
+- **Decision:** Option 1 of the three listed below (originally recorded as
+  OPEN): migration 007 creates `orchard_migrator` explicitly (`NOLOGIN`, only
+  if it doesn't already exist) and reassigns ownership of every
+  `evidence`/`rwa` schema, table, view, and trigger function to it -
+  independent of whichever role actually runs migrations. `down.sql`'s
+  guard for whether to drop the role checks `rolsuper`, not whether
+  `current_user` happens to be named `orchard_migrator`: in this repo's own
+  dev/CI setup, the Postgres bootstrap superuser created by the official
+  image (via `POSTGRES_USER`) already happens to be named
+  `orchard_migrator`/`orchard_ci`, and Postgres refuses to ever drop that
+  bootstrap role ("required by the database system") regardless of which
+  session asks. A role migration 007 actually created is always
+  `NOLOGIN`/non-superuser, which is what makes it safe to drop. Verified
+  against both shapes: the real dev/CI setup (skip, correctly) and a
+  throwaway container with a differently-named bootstrap user (create,
+  then drop and re-create cleanly across an up/down/up cycle).
+- **Original decision text (for context):** the spec (section 3, T3) names
+  `orchard_migrator` as the role that owns `evidence`/`rwa` schema objects,
+  but no migration created it; ownership fell out of whichever role ran
+  migrations (dev: `POSTGRES_USER`; CI: the service container's user), which
+  works only by coincidence today and would not hold under Supabase-managed
+  Postgres (DEC-002), where the initial admin role won't be named
+  `orchard_migrator`. Options that were on the table:
+  1. **(chosen)** Add a migration/bootstrap step that creates
+     `orchard_migrator` and transfers/asserts ownership to it, independent
+     of whichever role runs migrations.
+  2. Drop the `orchard_migrator` name from the spec; document ownership as
+     simply whatever role runs migrations per environment.
+  3. Keep `orchard_migrator` as a naming convention only, never created in
+     SQL.
 
 ## Open
 
@@ -142,35 +191,3 @@ Status vocabulary for decisions: `APPROVED`, `OPEN`.
 - **Status:** OPEN
 - **Decision:** Confirmation semantics under a ~30 s quote TTL.
 - **Trigger:** before M4.
-
-### DEC-014
-
-- **Status:** OPEN
-- **Decision:** `docs/specs/F001A-spec.md` section 3 (T3) names
-  `orchard_migrator` as the role that owns `evidence`/`rwa` schema objects,
-  but no migration creates it. In practice this works today because
-  `docker-compose.yml`/CI create the Postgres service's `POSTGRES_USER` as
-  a superuser (via the official Postgres image's own init behavior), and
-  `.env`'s `POSTGRES_USER=orchard_migrator` happens to be that name - object
-  ownership then falls out of whichever role runs the migrations, not a
-  role a migration explicitly created. This is undocumented reliance on
-  environment-specific bootstrapping, and won't hold once Supabase-managed
-  Postgres is in the picture (DEC-002), where the initial superuser is
-  fixed by the platform and won't be named `orchard_migrator`.
-  Options, not chosen here:
-  1. Add a migration (or a pre-migration bootstrap step in `db/migrate.ts`)
-     that creates `orchard_migrator` as a role and transfers/asserts
-     ownership of the `evidence`/`rwa` schemas and their objects to it,
-     independent of whichever role happens to run migrations.
-  2. Drop the `orchard_migrator` name from the spec and document that
-     schema/object ownership is simply whatever role runs migrations in
-     each environment (dev: `POSTGRES_USER`; CI: the service container's
-     user; Supabase: its platform-provided admin role) - accept that
-     ownership is environment-defined, not a fixed role name.
-  3. Keep `orchard_migrator` as a _convention_ (a recommended env value for
-     `POSTGRES_USER`/the CI migrator user) without ever creating it in SQL,
-     documented explicitly as a naming convention rather than a role the
-     schema depends on.
-- **Trigger:** before any migration or runtime code relies on
-  `orchard_migrator` existing as a real, distinct role - in particular
-  before Supabase project creation (DEC-002).
