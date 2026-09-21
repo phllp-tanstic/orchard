@@ -160,6 +160,24 @@ Status vocabulary for decisions: `APPROVED`, `OPEN`.
   3. Keep `orchard_migrator` as a naming convention only, never created in
      SQL.
 
+### DEC-017
+
+- **Status:** APPROVED
+- **Date:** 2026-09-21
+- **Decision:** Per-file integration test database isolation. Root cause and
+  reproduction: `docs/MILESTONE_STATUS.md` ("Integration-test deadlock"
+  incident, CONFIRMED). A `globalSetup` builds one fully-migrated template
+  database once per `pnpm test:integration` run; each integration test file
+  gets its own database created `TEMPLATE`d from it and drops that database
+  in `afterAll` (`DROP DATABASE ... WITH (FORCE)`), including when tests in
+  that file fail. No two files ever share a database, so the owner-role
+  `TRUNCATE` negative control (kept, per DEC-010/DEC-013) can no longer
+  lock-contend with an `INSERT` running concurrently in another file.
+  `fileParallelism` stays at its default (parallel) - isolation is what
+  makes that safe, not serializing the suite. Works against CI's Postgres
+  service container using the same env vars CI already sets
+  (`DATABASE_URL`, `ORCHARD_APP_DATABASE_URL`, `POSTGRES_DB`).
+
 ## Open
 
 ### DEC-003
