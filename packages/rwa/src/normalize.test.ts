@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { impliedPricePerShare, bpsDifference, parseDecimal } from "./normalize.js";
+import {
+  impliedPricePerShare,
+  bpsDifference,
+  parseDecimal,
+  ratioAnomalyReason,
+} from "./normalize.js";
 
 describe("impliedPricePerShare", () => {
   it("divides tokenPrice by tokenToShareRatio using decimal.js (no float rounding)", () => {
@@ -39,5 +44,33 @@ describe("bpsDifference", () => {
     const b = parseDecimal("0.1");
     const diff = bpsDifference(a, b);
     expect(diff?.toFixed(20)).toBe("0.00000000000001000000");
+  });
+});
+
+describe("ratioAnomalyReason", () => {
+  it("flags an empty tokenToShareRatio", () => {
+    expect(ratioAnomalyReason("")).toMatch(/empty/);
+  });
+
+  it("flags a non-numeric tokenToShareRatio", () => {
+    expect(ratioAnomalyReason("abc")).toMatch(/not a valid number/);
+  });
+
+  it("flags a zero tokenToShareRatio", () => {
+    expect(ratioAnomalyReason("0")).toMatch(/zero/);
+  });
+
+  it("flags a negative tokenToShareRatio", () => {
+    expect(ratioAnomalyReason("-1")).toMatch(/negative/);
+  });
+
+  it("does not flag a valid positive tokenToShareRatio", () => {
+    expect(ratioAnomalyReason("0.001")).toBeUndefined();
+  });
+
+  it("never throws for any of the invalid shapes (no crash, no invalid NUMERIC)", () => {
+    for (const bad of ["", "abc", "0", "-1", "NaN", "Infinity", "1/2"]) {
+      expect(() => ratioAnomalyReason(bad)).not.toThrow();
+    }
   });
 });

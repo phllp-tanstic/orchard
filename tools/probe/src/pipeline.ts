@@ -23,6 +23,7 @@ import {
   type TokenRepresentation,
 } from "@orchard/rwa";
 import type {
+  InvalidRatioEntry,
   RatioAnomaly,
   ReconciliationEntry,
   RwaUniverseReport,
@@ -113,6 +114,7 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
   const representations: TokenRepresentation[] = [];
   const reconciliation: ReconciliationEntry[] = [];
   const platformCounts: Record<string, number> = {};
+  const invalidRatios: InvalidRatioEntry[] = [];
 
   for (const platform of platforms) {
     try {
@@ -130,6 +132,20 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
       const reps = tokens.map(toRepresentation);
       representations.push(...reps);
       platformCounts[platform.platformId] = reps.length;
+
+      for (const rep of reps) {
+        if (rep.ratioAnomalyReason === undefined) continue;
+        invalidRatios.push({
+          underlyingTicker: rep.underlyingTicker,
+          binanceChainId: rep.binanceChainId,
+          tokenContractAddress: rep.tokenContractAddress,
+          tokenToShareRatio: rep.tokenToShareRatio,
+          reason: rep.ratioAnomalyReason,
+        });
+        reasons.push(
+          `invalid tokenToShareRatio for ${rep.binanceChainId}:${rep.tokenContractAddress} (${rep.underlyingTicker}): ${rep.ratioAnomalyReason}`,
+        );
+      }
 
       const chainEntry = platform.chainDistribution.find(
         (c) => c.binanceChainId === deps.targetChainId,
@@ -254,7 +270,10 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
     const reference = parseDecimal(price.referencePrice);
     const tokenPrice = parseDecimal(price.tokenPrice);
     const dVsTokenPrice = bpsDifference(reference, tokenPrice);
-    const dVsImplied = bpsDifference(reference, rep.impliedPricePerShare);
+    const dVsImplied =
+      rep.impliedPricePerShare !== undefined
+        ? bpsDifference(reference, rep.impliedPricePerShare)
+        : undefined;
     if (dVsTokenPrice !== undefined) bpsVsTokenPrice.push(dVsTokenPrice);
     if (dVsImplied !== undefined) bpsVsImplied.push(dVsImplied);
   }
@@ -303,6 +322,7 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
     marketStatusBreakdown,
     overlapMatrix,
     ratioAnomalies,
+    invalidRatios,
     staleness,
     referencePriceAnalysis,
     unknownFields,
@@ -339,6 +359,7 @@ function emptyReport(
     marketStatusBreakdown: {},
     overlapMatrix: [],
     ratioAnomalies: [],
+    invalidRatios: [],
     staleness: [],
     referencePriceAnalysis: {
       vsTokenPriceBps: { sampleSize: 0, min: undefined, max: undefined, medianAbs: undefined },

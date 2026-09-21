@@ -217,6 +217,53 @@ describe("runRwaUniverseProbe - schema drift propagation", () => {
   });
 });
 
+describe("runRwaUniverseProbe - invalid tokenToShareRatio", () => {
+  it.each(["", "abc", "0", "-1"])(
+    "records %j as a ratio anomaly and marks the run INCOMPLETE, never a crash",
+    async (badRatio) => {
+      const now = Date.UTC(2026, 8, 21, 12, 0, 0);
+      const badOndo = ondoToken({ tokenToShareRatio: badRatio });
+      const client: RequestClient = {
+        request: <T>(spec: RequestSpec) => {
+          if (spec.path === "/api/v1/dex/market/rwa/platforms") {
+            return Promise.resolve({ data: PLATFORMS_FIXTURE as T });
+          }
+          if (spec.path === "/api/v1/dex/market/rwa/tokens") {
+            const platformId = spec.query?.["platformId"];
+            const data = platformId === "ondo" ? [badOndo] : [bstockToken()];
+            return Promise.resolve({ data: data as T });
+          }
+          return Promise.resolve({ data: [] as T });
+        },
+      };
+
+      const result = await runRwaUniverseProbe({
+        client,
+        evidence: fakeEvidence(),
+        gitSha: "test-sha",
+        clientVersion: "0.0.0-test",
+        targetChainId: "56",
+        now: () => new Date(now),
+      });
+
+      expect(result.status).toBe("INCOMPLETE");
+      expect(result.report.invalidRatios).toHaveLength(1);
+      expect(result.report.invalidRatios[0]).toMatchObject({
+        binanceChainId: "56",
+        tokenToShareRatio: badRatio,
+      });
+      expect(result.incompleteReasons.some((r) => r.includes("invalid tokenToShareRatio"))).toBe(
+        true,
+      );
+      // The malformed token's own price analysis is skipped, but the rest of
+      // the universe (bstock) is still counted - one bad ratio doesn't wipe
+      // out the whole platform.
+      expect(result.report.totalRepresentations).toBe(2);
+      expect(result.report.platformCounts["ondo"]).toBe(1);
+    },
+  );
+});
+
 describe("runRwaUniverseProbe - reconciliation", () => {
   it("flags a reconciliation mismatch and marks the run INCOMPLETE (universe untrusted)", async () => {
     const now = Date.UTC(2026, 8, 21, 12, 0, 0);

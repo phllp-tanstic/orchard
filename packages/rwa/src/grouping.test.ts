@@ -75,8 +75,8 @@ describe("groupByUnderlyingTicker", () => {
     const tokens = loadTokens();
     const reps = tokens.map(toRepresentation);
     // token 1: tokenPrice 100.00, ratio 1 -> implied 100
-    expect(reps[0]!.impliedPricePerShare.toString()).toBe("100");
+    expect(reps[0]!.impliedPricePerShare?.toString()).toBe("100");
     // token 2: tokenPrice 10.00, ratio 0.1 -> implied 100
-    expect(reps[1]!.impliedPricePerShare.toString()).toBe("100");
+    expect(reps[1]!.impliedPricePerShare?.toString()).toBe("100");
   });
 });

@@ -1,6 +1,6 @@
 import type { Decimal } from "decimal.js";
 import type { AssetType, Token } from "./schemas.js";
-import { impliedPricePerShare } from "./normalize.js";
+import { impliedPricePerShare, ratioAnomalyReason } from "./normalize.js";
 
 export interface TokenRepresentation {
   binanceChainId: string;
@@ -13,10 +13,14 @@ export interface TokenRepresentation {
   tokenPrice: string;
   referencePrice: string;
   marketStatus: string;
-  impliedPricePerShare: Decimal;
+  /** undefined when tokenToShareRatio failed validation - see ratioAnomalyReason below. */
+  impliedPricePerShare: Decimal | undefined;
+  /** Set when tokenToShareRatio is empty, non-numeric, zero, or negative - never thrown. */
+  ratioAnomalyReason: string | undefined;
 }
 
 export function toRepresentation(token: Token): TokenRepresentation {
+  const anomaly = ratioAnomalyReason(token.tokenToShareRatio);
   return {
     binanceChainId: token.binanceChainId,
     tokenContractAddress: token.tokenContractAddress,
@@ -28,7 +32,11 @@ export function toRepresentation(token: Token): TokenRepresentation {
     tokenPrice: token.tokenPrice,
     referencePrice: token.referencePrice,
     marketStatus: token.statusInfo.marketStatus,
-    impliedPricePerShare: impliedPricePerShare(token.tokenPrice, token.tokenToShareRatio),
+    impliedPricePerShare:
+      anomaly === undefined
+        ? impliedPricePerShare(token.tokenPrice, token.tokenToShareRatio)
+        : undefined,
+    ratioAnomalyReason: anomaly,
   };
 }
 

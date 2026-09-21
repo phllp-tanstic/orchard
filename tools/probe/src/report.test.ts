@@ -23,6 +23,7 @@ function baseReport(overrides: Partial<RwaUniverseReport> = {}): RwaUniverseRepo
     marketStatusBreakdown: { regular: 2 },
     overlapMatrix: [{ underlyingTicker: "EXA", platformIds: ["bstock", "ondo"] }],
     ratioAnomalies: [],
+    invalidRatios: [],
     staleness: [
       {
         binanceChainId: "56",

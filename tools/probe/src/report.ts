@@ -16,6 +16,15 @@ export interface RatioAnomaly {
   profileRatio: string;
 }
 
+/** A token whose tokenToShareRatio was empty, non-numeric, zero, or negative - never usable. */
+export interface InvalidRatioEntry {
+  underlyingTicker: string;
+  binanceChainId: string;
+  tokenContractAddress: string;
+  tokenToShareRatio: string;
+  reason: string;
+}
+
 export interface StalenessEntry {
   binanceChainId: string;
   tokenContractAddress: string;
@@ -48,6 +57,7 @@ export interface RwaUniverseReport {
   marketStatusBreakdown: Record<string, number>;
   overlapMatrix: OverlapEntry[];
   ratioAnomalies: RatioAnomaly[];
+  invalidRatios: InvalidRatioEntry[];
   staleness: StalenessEntry[];
   referencePriceAnalysis: ReferencePriceAnalysis;
   unknownFields: Record<string, string[]>;
@@ -118,6 +128,18 @@ export function renderMarkdown(report: RwaUniverseReport): string {
     for (const a of report.ratioAnomalies) {
       lines.push(
         `- ${a.underlyingTicker} ${a.binanceChainId}:${a.tokenContractAddress}: list=${a.listRatio} profile=${a.profileRatio}`,
+      );
+    }
+  }
+  lines.push("");
+
+  lines.push(`## Invalid tokenToShareRatio`);
+  if (report.invalidRatios.length === 0) {
+    lines.push(`- none`);
+  } else {
+    for (const a of report.invalidRatios) {
+      lines.push(
+        `- ${a.underlyingTicker} ${a.binanceChainId}:${a.tokenContractAddress}: "${a.tokenToShareRatio}" (${a.reason})`,
       );
     }
   }
