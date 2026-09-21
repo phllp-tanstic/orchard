@@ -250,6 +250,28 @@ importers:
         specifier: ^22.10.1
         version: 22.20.4
 
+  tools/probe:
+    dependencies:
+      '@orchard/binance':
+        specifier: workspace:*
+        version: link:../../packages/binance
+      '@orchard/evidence':
+        specifier: workspace:*
+        version: link:../../packages/evidence
+      '@orchard/rwa':
+        specifier: workspace:*
+        version: link:../../packages/rwa
+      decimal.js:
+        specifier: ^10.4.3
+        version: 10.6.0
+      dotenv:
+        specifier: ^18.0.1
+        version: 18.0.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.1
+        version: 22.20.4
+
 packages:
 
   '@esbuild/aix-ppc64@0.21.5':
