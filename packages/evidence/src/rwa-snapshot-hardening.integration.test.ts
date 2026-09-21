@@ -45,7 +45,10 @@ function sampleCallRecord(): ProviderCallRecord {
   };
 }
 
-async function seedProbeRunAndProviderCall(): Promise<{ probeRunId: string; providerCallId: string }> {
+async function seedProbeRunAndProviderCall(): Promise<{
+  probeRunId: string;
+  providerCallId: string;
+}> {
   const probeRunId = await openProbeRun(appPool, { gitSha: "x", clientVersion: "0.0.0-test" });
   const providerCallId = await recordProviderCall(appPool, probeRunId, sampleCallRecord(), {
     salt: "integration-test-salt",
@@ -109,10 +112,12 @@ describe("rwa.*_snapshot hardening (DEC-013, migration 006)", () => {
     await expect(
       migratorPool.query(`UPDATE rwa.platform_snapshot SET platform_name = 'tampered' WHERE true`),
     ).rejects.toThrow(/append-only/);
-    await expect(migratorPool.query(`DELETE FROM rwa.platform_snapshot WHERE true`)).rejects.toThrow(
+    await expect(
+      migratorPool.query(`DELETE FROM rwa.platform_snapshot WHERE true`),
+    ).rejects.toThrow(/append-only/);
+    await expect(migratorPool.query(`TRUNCATE rwa.platform_snapshot`)).rejects.toThrow(
       /append-only/,
     );
-    await expect(migratorPool.query(`TRUNCATE rwa.platform_snapshot`)).rejects.toThrow(/append-only/);
   });
 
   it("rejects UPDATE, DELETE and TRUNCATE on rwa.token_snapshot even as the owning role", async () => {

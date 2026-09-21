@@ -3,7 +3,12 @@ import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
-import { tokenSchema, tokensDataSchema, unknownArrayItemKeys, unknownObjectKeys } from "./schemas.js";
+import {
+  tokenSchema,
+  tokensDataSchema,
+  unknownArrayItemKeys,
+  unknownObjectKeys,
+} from "./schemas.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = join(HERE, "..", "test", "fixtures", "DOC_EXAMPLE_tokens.json");

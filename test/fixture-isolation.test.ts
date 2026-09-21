@@ -48,9 +48,7 @@ describe("fixture isolation", () => {
       .concat(listFiles(join(REPO_ROOT, "tools"), IGNORE))
       .filter(
         (f) =>
-          /[\\/]src[\\/]/.test(f) &&
-          /\.(ts|tsx|js|mjs)$/.test(f) &&
-          !/\.test\.[jt]sx?$/.test(f),
+          /[\\/]src[\\/]/.test(f) && /\.(ts|tsx|js|mjs)$/.test(f) && !/\.test\.[jt]sx?$/.test(f),
       );
 
     const offenders: string[] = [];

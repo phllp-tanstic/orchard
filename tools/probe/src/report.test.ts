@@ -11,7 +11,13 @@ function baseReport(overrides: Partial<RwaUniverseReport> = {}): RwaUniverseRepo
     multiRepresentationUnderlyings: ["EXA"],
     platformCounts: { ondo: 1, bstock: 1 },
     reconciliation: [
-      { platformId: "ondo", targetChainId: "56", reportedTokenCount: 1, actualTokenCount: 1, ok: true },
+      {
+        platformId: "ondo",
+        targetChainId: "56",
+        reportedTokenCount: 1,
+        actualTokenCount: 1,
+        ok: true,
+      },
     ],
     assetTypeBreakdown: { Stock: 2 },
     marketStatusBreakdown: { regular: 2 },

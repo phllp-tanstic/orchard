@@ -3,7 +3,11 @@ import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 import { describe, expect, it } from "vitest";
 import { tokensDataSchema } from "./schemas.js";
-import { groupByUnderlyingTicker, multiRepresentationTickers, toRepresentation } from "./grouping.js";
+import {
+  groupByUnderlyingTicker,
+  multiRepresentationTickers,
+  toRepresentation,
+} from "./grouping.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = join(HERE, "..", "test", "fixtures", "DOC_EXAMPLE_tokens.json");

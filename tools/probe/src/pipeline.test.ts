@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runRwaUniverseProbe, type EvidenceOps, type RequestClient, type RequestSpec } from "./pipeline.js";
+import {
+  runRwaUniverseProbe,
+  type EvidenceOps,
+  type RequestClient,
+  type RequestSpec,
+} from "./pipeline.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLATFORMS_FIXTURE = JSON.parse(
@@ -261,7 +266,8 @@ describe("runRwaUniverseProbe - conflict flags", () => {
         }
         if (spec.path === "/api/v1/dex/market/rwa/underlying-profile") {
           const address = spec.query?.["tokenContractAddress"];
-          const token = address === ondoToken().tokenContractAddress ? ondoToken() : conflictingBstock;
+          const token =
+            address === ondoToken().tokenContractAddress ? ondoToken() : conflictingBstock;
           return Promise.resolve({ data: profileFor(token as never) as T });
         }
         return Promise.resolve({ data: [] as T });
@@ -306,7 +312,11 @@ describe("runRwaUniverseProbe - fail-closed path", () => {
     expect(result.report.status).toBe("FAILED");
     expect(result.report.totalRepresentations).toBe(0);
     expect(evidence.closedWith).toEqual([
-      { probeRunId: "fake-run-id", status: "FAILED", incompleteReasons: [result.incompleteReasons[0]] },
+      {
+        probeRunId: "fake-run-id",
+        status: "FAILED",
+        incompleteReasons: [result.incompleteReasons[0]],
+      },
     ]);
   });
 
@@ -371,4 +381,3 @@ describe("runRwaUniverseProbe - unknown field reporting", () => {
     expect(result.report.unknownFields["tokens:ondo"]).toEqual(["tokenIssuerNote"]);
   });
 });
-

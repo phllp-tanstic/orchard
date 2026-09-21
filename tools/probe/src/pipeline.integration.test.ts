@@ -142,9 +142,10 @@ describe("runRwaUniverseProbe wired to the real evidence recorder (integration, 
     const current = await getProbeRunCurrent(appPool, probeRunId);
     expect(current?.status).toBe("COMPLETE");
 
-    const rows = await appPool.query(`SELECT count(*)::int AS n FROM evidence.provider_call WHERE probe_run_id = $1`, [
-      probeRunId,
-    ]);
+    const rows = await appPool.query(
+      `SELECT count(*)::int AS n FROM evidence.provider_call WHERE probe_run_id = $1`,
+      [probeRunId],
+    );
     expect((rows.rows[0] as { n: number }).n).toBe(recordedCallIds.length);
   });
 });

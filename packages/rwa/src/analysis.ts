@@ -29,10 +29,7 @@ export function summarizeBps(values: readonly Decimal[]): BpsSummary {
 }
 
 export type ReferencePriceVerdict =
-  | "derived-from-tokenPrice"
-  | "derived-from-impliedPricePerShare"
-  | "independent"
-  | "inconclusive";
+  "derived-from-tokenPrice" | "derived-from-impliedPricePerShare" | "independent" | "inconclusive";
 
 /** A median absolute bps difference at or below this counts as "matches" for verdict purposes. */
 const NEAR_ZERO_BPS_THRESHOLD = new Decimal(1);

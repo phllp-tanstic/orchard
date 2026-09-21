@@ -134,9 +134,13 @@ export function renderMarkdown(report: RwaUniverseReport): string {
   lines.push("");
 
   lines.push(`## Staleness (tokenPriceUpdatedAt)`);
-  const staleSorted = [...report.staleness].sort((a, b) => b.ageSeconds - a.ageSeconds).slice(0, 20);
+  const staleSorted = [...report.staleness]
+    .sort((a, b) => b.ageSeconds - a.ageSeconds)
+    .slice(0, 20);
   for (const s of staleSorted) {
-    lines.push(`- ${s.binanceChainId}:${s.tokenContractAddress}: ${s.ageSeconds}s old (${s.tokenPriceUpdatedAt})`);
+    lines.push(
+      `- ${s.binanceChainId}:${s.tokenContractAddress}: ${s.ageSeconds}s old (${s.tokenPriceUpdatedAt})`,
+    );
   }
   if (report.staleness.length > staleSorted.length) {
     lines.push(`- ...and ${report.staleness.length - staleSorted.length} more`);

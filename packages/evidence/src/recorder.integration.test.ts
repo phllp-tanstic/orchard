@@ -83,9 +83,9 @@ describe("evidence recorder (integration, real Postgres)", () => {
       incompleteReasons: ["reconciliation mismatch"],
     });
 
-    await expect(
-      closeProbeRun(appPool, { probeRunId, status: "FAILED" }),
-    ).rejects.toBeInstanceOf(ProbeRunAlreadyTerminalError);
+    await expect(closeProbeRun(appPool, { probeRunId, status: "FAILED" })).rejects.toBeInstanceOf(
+      ProbeRunAlreadyTerminalError,
+    );
 
     // status must not have regressed
     const current = await getProbeRunCurrent(appPool, probeRunId);
@@ -107,9 +107,9 @@ describe("evidence recorder (integration, real Postgres)", () => {
       await expect(
         migratorPool.query(`UPDATE evidence.probe_run SET git_sha = 'tampered' WHERE true`),
       ).rejects.toThrow(/append-only/);
-      await expect(
-        migratorPool.query(`DELETE FROM evidence.probe_run WHERE true`),
-      ).rejects.toThrow(/append-only/);
+      await expect(migratorPool.query(`DELETE FROM evidence.probe_run WHERE true`)).rejects.toThrow(
+        /append-only/,
+      );
       // probe_run is referenced by other evidence/rwa tables' FKs, so a plain
       // TRUNCATE is refused by Postgres's own referential-integrity check
       // before any trigger runs; CASCADE forces it through to prove our

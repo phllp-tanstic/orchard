@@ -102,7 +102,11 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
   } catch (err) {
     const reason = `failed to fetch/validate platforms: ${describeError(err)}`;
     const failedReport = emptyReport(probeRunId, deps.gitSha, now(), "FAILED", [reason]);
-    await deps.evidence.closeProbeRun({ probeRunId, status: "FAILED", incompleteReasons: [reason] });
+    await deps.evidence.closeProbeRun({
+      probeRunId,
+      status: "FAILED",
+      incompleteReasons: [reason],
+    });
     return { probeRunId, status: "FAILED", incompleteReasons: [reason], report: failedReport };
   }
 
@@ -225,7 +229,9 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
         if (extra.length) unknownFields[`price:${chainId}:${i / PRICE_BATCH_MAX}`] = extra;
         for (const p of prices) priceByKey.set(`${p.binanceChainId}:${p.tokenContractAddress}`, p);
       } catch (err) {
-        reasons.push(`failed to fetch/validate price batch for chain ${chainId}: ${describeError(err)}`);
+        reasons.push(
+          `failed to fetch/validate price batch for chain ${chainId}: ${describeError(err)}`,
+        );
       }
     }
   }

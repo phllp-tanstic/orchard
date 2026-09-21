@@ -51,7 +51,18 @@ function runGitleaks(args: string[]): ScanResult {
   try {
     execFileSync(
       "gitleaks",
-      [...args, "-c", GITLEAKS_CONFIG, "--no-banner", "--exit-code", "1", "-f", "json", "-r", reportPath],
+      [
+        ...args,
+        "-c",
+        GITLEAKS_CONFIG,
+        "--no-banner",
+        "--exit-code",
+        "1",
+        "-f",
+        "json",
+        "-r",
+        reportPath,
+      ],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     );
     return { leaksFound: false, ruleIds: [] };
@@ -128,9 +139,11 @@ describe("gitleaks regression (DEC-013 A2: exact-value allowlist, no path allowl
       join(workDir, ".env.leaked"),
       // Built from parts (never a contiguous literal in this source file) so
       // this test file itself doesn't trip the very rule it's testing.
-      ["DATABASE_URL=postgres://orchard_migrator:", "not_a_real_password_123", "@localhost:5432/orchard\n"].join(
-        "",
-      ),
+      [
+        "DATABASE_URL=postgres://orchard_migrator:",
+        "not_a_real_password_123",
+        "@localhost:5432/orchard\n",
+      ].join(""),
     );
 
     const result = scanDir(workDir);
