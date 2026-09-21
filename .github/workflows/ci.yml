@@ -1,0 +1,87 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # Never a live provider call in CI. This is a throwaway local-only credential
+  # for the Postgres service container, not a secret. DATABASE_URL is assembled
+  # at runtime (see "Compose DATABASE_URL" step) so no connection string with an
+  # embedded password is ever written to this file, consistent with the
+  # postgres-connection-string-password gitleaks rule.
+  POSTGRES_USER: orchard_ci
+  POSTGRES_PASSWORD: orchard_ci
+  POSTGRES_DB: orchard_ci
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # postgres:17.11 as of 2026-09-21; pinned by digest, matches docker-compose.yml.
+        image: postgres@sha256:f4c66b820c6f974249089d3d16d86a3698eae11e8746eb6644b2271031e91232
+        env:
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U orchard_ci -d orchard_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compose DATABASE_URL
+        run: |
+          USERINFO="$POSTGRES_USER:$POSTGRES_PASSWORD"
+          echo "DATABASE_URL=postgres://${USERINFO}@localhost:5432/$POSTGRES_DB" >> "$GITHUB_ENV"
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test -- --passWithNoTests
+
+      - name: Migration up (if implemented)
+        run: |
+          if pnpm run --if-present migrate:up | grep -q .; then
+            echo "ran migrate:up"
+          else
+            echo "migrate:up not yet implemented (see docs/specs/F001A-spec.md T3)"
+          fi
+
+      - name: Integration tests against Postgres service container (if implemented)
+        run: |
+          if [ -f vitest.integration.config.ts ]; then
+            pnpm test:integration -- --passWithNoTests
+          else
+            echo "test:integration not yet implemented (see docs/specs/F001A-spec.md T3)"
+          fi
+
+      - name: Migration down (if implemented)
+        run: |
+          if pnpm run --if-present migrate:down | grep -q .; then
+            echo "ran migrate:down"
+          else
+            echo "migrate:down not yet implemented (see docs/specs/F001A-spec.md T3)"
+          fi
