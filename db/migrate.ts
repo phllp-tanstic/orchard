@@ -2,15 +2,48 @@
 import "dotenv/config";
 import { runner } from "node-pg-migrate";
 import { Client } from "pg";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
+import { readdirSync } from "node:fs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = join(HERE, "migrations");
+export const MIGRATIONS_DIR = join(HERE, "migrations");
 const MIGRATIONS_SCHEMA = "orchard_migrations";
 
-async function setAppPassword(): Promise<void> {
-  const databaseUrl = requireEnv("DATABASE_URL");
+/** Migration names as node-pg-migrate/pgmigrations records them: the file stem, sans `.up.sql`. */
+export function listMigrationNames(): string[] {
+  return readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith(".up.sql"))
+    .map((f) => f.slice(0, -".up.sql".length))
+    .sort();
+}
+
+/**
+ * Runs every pending migration against `databaseUrl` and sets orchard_app's
+ * login password (DEC-018: shared by db/migrate.ts's CLI and
+ * db/test-global-setup.ts, so a fresh test-template database is migrated
+ * the exact same way a real one is - no separate/parallel migration path).
+ */
+export async function migrateUp(databaseUrl: string): Promise<void> {
+  await runner({
+    databaseUrl,
+    dir: MIGRATIONS_DIR,
+    direction: "up",
+    count: Infinity,
+    migrationsTable: "pgmigrations",
+    migrationsSchema: MIGRATIONS_SCHEMA,
+    createMigrationsSchema: true,
+    schema: ["evidence", "rwa"],
+    createSchema: false,
+    migrationLoaderStrategies: [{ extensions: [".sql"], loader: "sql" }],
+    checkOrder: true,
+    singleTransaction: true,
+    verbose: true,
+  });
+  await setAppPassword(databaseUrl);
+}
+
+async function setAppPassword(databaseUrl: string): Promise<void> {
   const appPassword = process.env["ORCHARD_APP_DB_PASSWORD"];
   if (!appPassword) {
     console.warn(
@@ -60,18 +93,22 @@ async function main(): Promise<void> {
     console.error("Usage: tsx db/migrate.ts <up|down> [count]");
     process.exit(1);
   }
-  if (direction === "down") {
-    assertDestructiveMigrationAllowed();
-  }
-  const countArg = process.argv[3];
-  const count = countArg !== undefined ? Number(countArg) : undefined;
 
   const databaseUrl = requireEnv("DATABASE_URL");
+
+  if (direction === "up") {
+    await migrateUp(databaseUrl);
+    return;
+  }
+
+  assertDestructiveMigrationAllowed();
+  const countArg = process.argv[3];
+  const count = countArg !== undefined ? Number(countArg) : undefined;
 
   await runner({
     databaseUrl,
     dir: MIGRATIONS_DIR,
-    direction,
+    direction: "down",
     count: count ?? Infinity,
     migrationsTable: "pgmigrations",
     migrationsSchema: MIGRATIONS_SCHEMA,
@@ -83,13 +120,18 @@ async function main(): Promise<void> {
     singleTransaction: true,
     verbose: true,
   });
-
-  if (direction === "up") {
-    await setAppPassword();
-  }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Only run the CLI when this file is executed directly (`tsx db/migrate.ts
+// <up|down>`), not when migrateUp/listMigrationNames are imported as a
+// module (db/test-global-setup.ts, DEC-018) - importing must never also
+// trigger argv-driven CLI behavior as a side effect.
+const isMainModule =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isMainModule) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
