@@ -6,7 +6,7 @@
   "license": "Apache-2.0",
   "description": "Orchard: banking-style consumer investment account for tokenized stocks on BNB Chain.",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "packageManager": "pnpm@12.5.1",
   "scripts": {
