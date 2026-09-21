@@ -3,6 +3,7 @@ name: ci
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -109,3 +110,60 @@ jobs:
 
       - name: Migration up again (idempotency check)
         run: pnpm migrate:up
+
+  # DEC-018: manually-triggered stress run for the per-file integration test
+  # isolation mechanism (DEC-017/DEC-018) - not on every push/PR, since 25x
+  # the normal integration-test cost isn't worth paying on every commit.
+  # Deliberately does not migrate the service container's own database
+  # first: db/test-global-setup.ts's template is self-contained (DEC-018),
+  # so this also doubles as CI coverage of that property.
+  integration-stress:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # postgres:17.11 as of 2026-09-21; pinned by digest, matches docker-compose.yml.
+        image: postgres@sha256:f4c66b820c6f974249089d3d16d86a3698eae11e8746eb6644b2271031e91232
+        env:
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U orchard_ci -d orchard_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compose DATABASE_URL and app role connection string
+        run: |
+          MIGRATOR_USERINFO="$POSTGRES_USER:$POSTGRES_PASSWORD"
+          APP_USERINFO="orchard_app:$ORCHARD_APP_DB_PASSWORD"
+          {
+            echo "DATABASE_URL=postgres://${MIGRATOR_USERINFO}@localhost:5432/$POSTGRES_DB"
+            echo "ORCHARD_APP_DB_PASSWORD=$ORCHARD_APP_DB_PASSWORD"
+            echo "ORCHARD_APP_DATABASE_URL=postgres://${APP_USERINFO}@localhost:5432/$POSTGRES_DB"
+          } >> "$GITHUB_ENV"
+        env:
+          ORCHARD_APP_DB_PASSWORD: orchard_ci_app
+
+      - name: Integration tests x25 (stress)
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 25); do
+            echo "=== integration-stress run $i/25 ==="
+            pnpm test:integration -- --passWithNoTests
+          done
