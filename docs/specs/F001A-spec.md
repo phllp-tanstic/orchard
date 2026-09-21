@@ -45,11 +45,14 @@ Prove, from live Binance Web3 API data, which tokenized-stock representations ex
 ### T3. `packages/evidence` and `db/`
 - Migrations: SQL files run by `node-pg-migrate`, with up and down.
 - Schemas: `evidence` and `rwa`. **Nothing in `public`** (Supabase exposes `public` through its auto-generated API).
-- Roles: `orchard_migrator` owns objects. `orchard_app` has INSERT and SELECT on evidence tables, no UPDATE, DELETE or TRUNCATE. A trigger additionally rejects UPDATE and DELETE on evidence tables. Enable Row Level Security on every table.
-- Tables (minimum):
-  - `evidence.probe_run`: id, started_at, finished_at, status (`RUNNING`/`COMPLETE`/`INCOMPLETE`/`FAILED`), git_sha, client_version, incomplete_reasons.
+- Roles: `orchard_migrator` owns objects. `orchard_app` has INSERT and SELECT on evidence tables, no UPDATE, DELETE or TRUNCATE. A trigger additionally rejects UPDATE, DELETE, and TRUNCATE (statement-level) on evidence tables, with no exceptions, including for the owner role. Enable Row Level Security on every table.
+- Tables (minimum) — **amended by DEC-010 (Spec Amendment A1)**:
+  - `evidence.probe_run`: immutable header. id, started_at, git_sha, client_version. No status column; a header row is never mutated after insert.
+  - `evidence.probe_run_event`: append-only. id, probe_run_id, status (`RUNNING`/`COMPLETE`/`INCOMPLETE`/`FAILED`), incomplete_reasons (jsonb, nullable), recorded_at. The header and its `RUNNING` event are inserted in one transaction. Once a terminal event (`COMPLETE`/`INCOMPLETE`/`FAILED`) exists for a run, a trigger rejects any further event for that run (no status regression, no re-opening a finished run).
+  - `evidence.probe_run_current`: a view over `probe_run` and `probe_run_event` exposing run id, latest status, incomplete_reasons, and finished_at (the time of the terminal event, null while `RUNNING`).
   - `evidence.provider_call`: id, probe_run_id, provider, method, endpoint, redacted_request (jsonb), http_status, provider_code, latency_ms, rate_limit_headers (jsonb), response_sha256, raw_response (bytea, exact bytes), response_json (jsonb, nullable), created_at.
   - `rwa.platform_snapshot` and `rwa.token_snapshot`, linked to probe_run and provider_call. Every provider numeric stored twice: exact string as received, and `NUMERIC` (never float).
+  - The report generator (T4) only marks a run `COMPLETE` by reading `evidence.probe_run_current`; a run with no terminal event is never reported complete.
 - Redaction: request params in a configured sensitive list (for example `userWalletAddress`, `address`) are stored as salted sha256 in `redacted_request`. Salt from env, git-ignored.
 - `pnpm evidence:export --run <id>`: writes redacted artifacts to `evidence/export/<sha256>.json` and appends to `evidence/manifest.jsonl` (provider, endpoint, status, provider code, latency, sha256, timestamp, run id). Export only. The owner reviews and commits by hand.
 
@@ -85,6 +88,7 @@ Prove, from live Binance Web3 API data, which tokenized-stock representations ex
 - Fail-closed `INCOMPLETE` path.
 - Fixture isolation check.
 - Integration (Postgres container): migrations up/down; `orchard_app` cannot UPDATE or DELETE evidence (expect permission error); trigger rejects UPDATE/DELETE even as owner; redaction hashes sensitive params; export writes only redacted content.
+- **Amended by DEC-010 (Spec Amendment A1):** `probe_run` header and its `RUNNING` event insert atomically in one transaction; a terminal event (`COMPLETE`/`INCOMPLETE`/`FAILED`) is accepted; any event submitted after a terminal event for that run is rejected; UPDATE, DELETE, and TRUNCATE are rejected on both `probe_run` and `probe_run_event` even as the owner role; `evidence.probe_run_current` returns the latest status and correct finished_at; `orchard_app` can INSERT but not UPDATE or DELETE on these tables.
 - gitleaks: new `DATABASE_URL` rule catches a fake credentialed URL in a throwaway copy outside the repo; empty `.env.example` stays clean.
 
 ## 6. Acceptance (T1 to T4, pre-live)

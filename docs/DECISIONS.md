@@ -35,6 +35,24 @@ Status vocabulary for decisions: `APPROVED`, `OPEN`.
 - **Date:** 2026-09-21
 - **Decision:** Repository is public from the first commit.
 
+### DEC-010
+
+- **Status:** APPROVED
+- **Date:** 2026-09-21
+- **Decision:** Spec Amendment A1 to `docs/specs/F001A-spec.md` section 3 (T3) and section 5,
+  resolving the conflict between an append-only evidence trigger and a mutable `probe_run`
+  status. `evidence.probe_run` becomes an immutable header (id, started_at, git_sha,
+  client_version; no status column). `evidence.probe_run_event` is a new append-only table
+  (id, probe_run_id, status [`RUNNING`/`COMPLETE`/`INCOMPLETE`/`FAILED`], incomplete_reasons
+  jsonb nullable, recorded_at). The header and its `RUNNING` event are inserted in one
+  transaction. Once a terminal event (`COMPLETE`/`INCOMPLETE`/`FAILED`) exists for a run, a
+  trigger rejects any further event for that run (no status regression). A view,
+  `evidence.probe_run_current`, exposes run id, latest status, reasons, and finished_at (time
+  of the terminal event). The blanket evidence trigger stays with no exceptions: it rejects
+  UPDATE, DELETE, and TRUNCATE (statement-level) on every evidence table, including for the
+  owner role. The report generator only marks a run `COMPLETE` from a `COMPLETE` event; a run
+  with no terminal event is never reported complete.
+
 ## Open
 
 ### DEC-003
