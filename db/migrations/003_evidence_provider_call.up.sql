@@ -31,3 +31,7 @@ CREATE TRIGGER provider_call_no_update
 CREATE TRIGGER provider_call_no_delete
   BEFORE DELETE ON evidence.provider_call
   FOR EACH ROW EXECUTE FUNCTION evidence.reject_mutation();
+
+CREATE TRIGGER provider_call_no_truncate
+  BEFORE TRUNCATE ON evidence.provider_call
+  FOR EACH STATEMENT EXECUTE FUNCTION evidence.reject_mutation();
