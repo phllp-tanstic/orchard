@@ -30,6 +30,20 @@ describe("orchard_migrator bootstrap (DEC-014, migration 007)", () => {
     expect(result.rows).toHaveLength(1);
   });
 
+  it("creates orchard_migrator as NOLOGIN and not a superuser (DEC-016: dev/CI parity)", async () => {
+    // If a dev's local POSTGRES_USER (the Postgres image's bootstrap
+    // superuser) happens to be named orchard_migrator/orchard_app, migration
+    // 007's "create if not exists" check silently skips, and this assertion
+    // would be checking the bootstrap superuser instead of the role the
+    // migration actually creates - see .env.example (DEC-016).
+    const result = await migratorPool.query<{ rolcanlogin: boolean; rolsuper: boolean }>(
+      `SELECT rolcanlogin, rolsuper FROM pg_catalog.pg_roles WHERE rolname = 'orchard_migrator'`,
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]?.rolcanlogin).toBe(false);
+    expect(result.rows[0]?.rolsuper).toBe(false);
+  });
+
   it("owns the evidence and rwa schemas", async () => {
     const result = await migratorPool.query<{ nspname: string; owner: string }>(
       `SELECT nspname, pg_get_userbyid(nspowner) AS owner
