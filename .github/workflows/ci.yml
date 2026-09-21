@@ -48,10 +48,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Compose DATABASE_URL
+      - name: Compose DATABASE_URL and app role connection string
+        # Both assembled at runtime, never as a literal connection string in
+        # this file, consistent with the postgres-connection-string-password
+        # gitleaks rule. ORCHARD_APP_DB_PASSWORD is a throwaway CI-only value
+        # for the service container, not a secret.
         run: |
-          USERINFO="$POSTGRES_USER:$POSTGRES_PASSWORD"
-          echo "DATABASE_URL=postgres://${USERINFO}@localhost:5432/$POSTGRES_DB" >> "$GITHUB_ENV"
+          MIGRATOR_USERINFO="$POSTGRES_USER:$POSTGRES_PASSWORD"
+          APP_USERINFO="orchard_app:$ORCHARD_APP_DB_PASSWORD"
+          {
+            echo "DATABASE_URL=postgres://${MIGRATOR_USERINFO}@localhost:5432/$POSTGRES_DB"
+            echo "ORCHARD_APP_DB_PASSWORD=$ORCHARD_APP_DB_PASSWORD"
+            echo "ORCHARD_APP_DATABASE_URL=postgres://${APP_USERINFO}@localhost:5432/$POSTGRES_DB"
+          } >> "$GITHUB_ENV"
+        env:
+          ORCHARD_APP_DB_PASSWORD: orchard_ci_app
 
       - name: Lint
         run: pnpm lint
@@ -62,26 +73,14 @@ jobs:
       - name: Unit tests
         run: pnpm test -- --passWithNoTests
 
-      - name: Migration up (if implemented)
-        run: |
-          if pnpm run --if-present migrate:up | grep -q .; then
-            echo "ran migrate:up"
-          else
-            echo "migrate:up not yet implemented (see docs/specs/F001A-spec.md T3)"
-          fi
+      - name: Migration up
+        run: pnpm migrate:up
 
-      - name: Integration tests against Postgres service container (if implemented)
-        run: |
-          if [ -f vitest.integration.config.ts ]; then
-            pnpm test:integration -- --passWithNoTests
-          else
-            echo "test:integration not yet implemented (see docs/specs/F001A-spec.md T3)"
-          fi
+      - name: Integration tests against Postgres service container
+        run: pnpm test:integration -- --passWithNoTests
 
-      - name: Migration down (if implemented)
-        run: |
-          if pnpm run --if-present migrate:down | grep -q .; then
-            echo "ran migrate:down"
-          else
-            echo "migrate:down not yet implemented (see docs/specs/F001A-spec.md T3)"
-          fi
+      - name: Migration down
+        run: pnpm migrate:down
+
+      - name: Migration up again (idempotency check)
+        run: pnpm migrate:up
