@@ -84,15 +84,32 @@ async function insertTokenSnapshot(
 
 describe("rwa.*_snapshot hardening (DEC-013, migration 006)", () => {
   it("accepts a non-numeric binance_chain_id such as Solana's CT_501", async () => {
-    const { probeRunId, providerCallId } = await seedProbeRunAndProviderCall();
-    const id = await insertTokenSnapshot(probeRunId, providerCallId, "CT_501");
-    expect(id).toBeTruthy();
-
-    const row = await appPool.query<{ binance_chain_id: string }>(
-      `SELECT binance_chain_id FROM rwa.token_snapshot WHERE id = $1`,
-      [id],
-    );
-    expect(row.rows[0]?.binance_chain_id).toBe("CT_501");
+    // Runs inside a transaction rolled back at the end: rwa.token_snapshot is
+    // append-only (no DELETE), so a committed non-numeric chain id here would
+    // permanently block migration 006's down.sql, whose revert to integer is
+    // intentionally lossy on such rows. The insert still exercises the real
+    // column type (it would fail the same way as a committed insert if the
+    // column were still integer).
+    const client = await appPool.connect();
+    try {
+      await client.query("BEGIN");
+      const probeRunId = await openProbeRun(appPool, { gitSha: "x", clientVersion: "0.0.0-test" });
+      const providerCallId = await recordProviderCall(appPool, probeRunId, sampleCallRecord(), {
+        salt: "integration-test-salt",
+      });
+      const inserted = await client.query<{ id: string; binance_chain_id: string }>(
+        `INSERT INTO rwa.token_snapshot
+          (probe_run_id, provider_call_id, platform_id, token_address, binance_chain_id,
+           token_to_share_ratio_raw, token_to_share_ratio, raw)
+         VALUES ($1, $2, 'PLATFORM_1', '0xABC', 'CT_501', '1', 1, '{}'::jsonb)
+         RETURNING id, binance_chain_id`,
+        [probeRunId, providerCallId],
+      );
+      expect(inserted.rows[0]?.binance_chain_id).toBe("CT_501");
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+    }
   });
 
   it("still accepts a numeric-looking binance_chain_id like '56' (now stored as text)", async () => {
