@@ -27,7 +27,14 @@ export interface RequestSpec {
   body?: unknown;
 }
 
-/** Redacted request/response metadata for one HTTP attempt, secret-free. */
+/**
+ * Request/response metadata for one HTTP attempt. Secret-free: never
+ * includes the API key, secret, or computed signature. `requestQuery` /
+ * `requestBody` are the caller-supplied `RequestSpec` values verbatim
+ * (pre-redaction) — T3's evidence recorder redacts configured sensitive
+ * params before persisting. `rawResponseBody` is the exact response text as
+ * received, so an evidence recorder can hash/store exact bytes.
+ */
 export interface ProviderCallRecord {
   provider: "binance";
   method: string;
@@ -41,6 +48,12 @@ export interface ProviderCallRecord {
   /** Present only when the HTTP call itself failed before a response was received. */
   networkError: string | undefined;
   timestamp: string;
+  requestQuery: RequestSpec["query"];
+  requestBody: unknown;
+  /** Exact response body text as received; undefined when no response body was read (network error). */
+  rawResponseBody: string | undefined;
+  /** JSON.parse(rawResponseBody) when it parses as JSON; undefined otherwise. */
+  responseJson: unknown;
 }
 
 export interface BinanceCallResult<T> {

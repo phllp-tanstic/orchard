@@ -107,6 +107,8 @@ export class BinanceWeb3Client {
       let providerCode: string | undefined;
       let rateLimitHeaders: Record<string, string> = {};
       let networkError: string | undefined;
+      let rawResponseBody: string | undefined;
+      let responseJson: unknown;
 
       try {
         const requestInit: RequestInit = { method: spec.method, headers };
@@ -114,6 +116,12 @@ export class BinanceWeb3Client {
         const response = await this.fetchImpl(url, requestInit);
         httpStatus = response.status;
         rateLimitHeaders = extractRateLimitHeaders(response.headers);
+        rawResponseBody = await response.text();
+        try {
+          responseJson = rawResponseBody.length > 0 ? JSON.parse(rawResponseBody) : undefined;
+        } catch {
+          responseJson = undefined;
+        }
 
         if (response.status === 429) {
           const retryAfterHeader = response.headers.get("Retry-After");
@@ -128,6 +136,8 @@ export class BinanceWeb3Client {
             providerCode,
             rateLimitHeaders,
             networkError,
+            rawResponseBody,
+            responseJson,
             startedAt,
           });
           lastError = new BinanceRateLimitError(retryAfterMs);
@@ -136,7 +146,12 @@ export class BinanceWeb3Client {
           continue;
         }
 
-        const envelope = (await response.json()) as ProviderEnvelope;
+        if (responseJson === undefined) {
+          throw new Error(
+            `Binance Web3 API returned a non-JSON response body (HTTP ${httpStatus})`,
+          );
+        }
+        const envelope = responseJson as ProviderEnvelope;
         providerCode = String(envelope.code);
         this.recordCall({
           spec,
@@ -147,6 +162,8 @@ export class BinanceWeb3Client {
           providerCode,
           rateLimitHeaders,
           networkError,
+          rawResponseBody,
+          responseJson,
           startedAt,
         });
 
@@ -180,6 +197,8 @@ export class BinanceWeb3Client {
           providerCode,
           rateLimitHeaders,
           networkError,
+          rawResponseBody,
+          responseJson,
           startedAt,
         });
         lastError = err;
@@ -199,6 +218,8 @@ export class BinanceWeb3Client {
     providerCode: string | undefined;
     rateLimitHeaders: Record<string, string>;
     networkError: string | undefined;
+    rawResponseBody: string | undefined;
+    responseJson: unknown;
     startedAt: number;
   }): void {
     if (!this.onCall) return;
@@ -211,6 +232,8 @@ export class BinanceWeb3Client {
       providerCode,
       rateLimitHeaders,
       networkError,
+      rawResponseBody,
+      responseJson,
       startedAt,
     } = args;
     this.onCall({
@@ -224,6 +247,10 @@ export class BinanceWeb3Client {
       rateLimitHeaders,
       networkError,
       timestamp: this.now().toISOString(),
+      requestQuery: spec.query,
+      requestBody: spec.body,
+      rawResponseBody,
+      responseJson,
     });
   }
 

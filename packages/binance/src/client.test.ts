@@ -235,4 +235,27 @@ describe("BinanceWeb3Client evidence hook", () => {
     expect(serialized).not.toContain("SYNTHETIC_SECRET");
     expect(serialized).not.toContain("SYNTHETIC_KEY");
   });
+
+  it("passes through raw request query/body and exact response bytes for an evidence recorder", async () => {
+    const records: ProviderCallRecord[] = [];
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ code: "0", data: { ok: true } }));
+    const client = new BinanceWeb3Client({
+      apiKey: "SYNTHETIC_KEY",
+      apiSecret: "SYNTHETIC_SECRET",
+      baseUrl: "https://example.invalid",
+      fetchImpl,
+      onCall: (r) => records.push(r),
+    });
+
+    await client.request({
+      method: "GET",
+      path: "/api/v1/dex/market/rwa/tokens",
+      query: { binanceChainId: 56, userWalletAddress: "0xabc" },
+    });
+
+    expect(records).toHaveLength(1);
+    expect(records[0]!.requestQuery).toEqual({ binanceChainId: 56, userWalletAddress: "0xabc" });
+    expect(records[0]!.rawResponseBody).toBe(JSON.stringify({ code: "0", data: { ok: true } }));
+    expect(records[0]!.responseJson).toEqual({ code: "0", data: { ok: true } });
+  });
 });
