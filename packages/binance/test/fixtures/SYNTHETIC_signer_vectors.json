@@ -1,0 +1,26 @@
+{
+  "_generatedBy": "Standalone node:crypto one-liner run outside this package/repo test harness (not this package's sign() implementation), to keep the vector independent. Logic: preHash = timestamp + method + requestPath + '?' + query + body (query omitted with no '?' when empty); signature = createHmac('sha256', secret).update(preHash).digest('base64').",
+  "secret": "SYNTHETIC_TEST_SECRET_0123456789",
+  "vectors": [
+    {
+      "name": "GET with URL-encoded query (space, and literal & / = encoded inside a param value)",
+      "timestamp": "2026-01-01T00:00:00.000Z",
+      "method": "GET",
+      "requestPath": "/build/api/v1/dex/market/rwa/tokens",
+      "query": "underlyingTicker=AAPL%20US&binanceChainId=56&note=a%26b%3Dc",
+      "body": "",
+      "expectedPreHash": "2026-01-01T00:00:00.000ZGET/build/api/v1/dex/market/rwa/tokens?underlyingTicker=AAPL%20US&binanceChainId=56&note=a%26b%3Dc",
+      "expectedSignature": "VF4K7Rt7fD0m3n9kt2P17XQkX2IbQhft8lgQEVX0mw8="
+    },
+    {
+      "name": "POST with JSON body, no query",
+      "timestamp": "2026-01-01T00:00:01.500Z",
+      "method": "POST",
+      "requestPath": "/build/api/v1/dex/market/rwa/price",
+      "query": "",
+      "body": "{\"tokenAddresses\":[\"0xABC123\"]}",
+      "expectedPreHash": "2026-01-01T00:00:01.500ZPOST/build/api/v1/dex/market/rwa/price{\"tokenAddresses\":[\"0xABC123\"]}",
+      "expectedSignature": "u7A8HoHG8a8j2m5ob43bStBYiYgRCr6xL4WwmJR4AsQ="
+    }
+  ]
+}
