@@ -53,23 +53,63 @@ describe("ratioAnomalyReason", () => {
   });
 
   it("flags a non-numeric tokenToShareRatio", () => {
-    expect(ratioAnomalyReason("abc")).toMatch(/not a valid number/);
+    expect(ratioAnomalyReason("abc")).toMatch(/not a plain decimal/);
   });
 
   it("flags a zero tokenToShareRatio", () => {
     expect(ratioAnomalyReason("0")).toMatch(/zero/);
   });
 
-  it("flags a negative tokenToShareRatio", () => {
-    expect(ratioAnomalyReason("-1")).toMatch(/negative/);
+  it("flags a zero tokenToShareRatio with a fractional part (0.0)", () => {
+    expect(ratioAnomalyReason("0.0")).toMatch(/zero/);
+  });
+
+  it("flags a negative tokenToShareRatio (sign is not a plain decimal)", () => {
+    expect(ratioAnomalyReason("-1")).toMatch(/not a plain decimal/);
   });
 
   it("does not flag a valid positive tokenToShareRatio", () => {
     expect(ratioAnomalyReason("0.001")).toBeUndefined();
   });
 
+  it("does not flag a valid positive integer tokenToShareRatio", () => {
+    expect(ratioAnomalyReason("1")).toBeUndefined();
+  });
+
+  describe("rejects anything that isn't a strict plain decimal, even though it parses as a number elsewhere", () => {
+    it.each([
+      ["hex", "0x10"],
+      ["binary", "0b11"],
+      ["octal-looking", "0o17"],
+      ["scientific notation", "1e5"],
+      ["digit-group separators", "1_000"],
+      ["explicit plus sign", "+1"],
+      ["leading zero", "01"],
+      ["leading decimal point", ".5"],
+      ["trailing decimal point", "1."],
+      ["whitespace-padded", " 1 "],
+      ["NaN literal", "NaN"],
+      ["Infinity literal", "Infinity"],
+      ["fraction syntax", "1/2"],
+    ])("%s: %j", (_label, bad) => {
+      expect(ratioAnomalyReason(bad)).toMatch(/not a plain decimal/);
+    });
+  });
+
   it("never throws for any of the invalid shapes (no crash, no invalid NUMERIC)", () => {
-    for (const bad of ["", "abc", "0", "-1", "NaN", "Infinity", "1/2"]) {
+    for (const bad of [
+      "",
+      "abc",
+      "0",
+      "-1",
+      "0x10",
+      "0b11",
+      "1e5",
+      "1_000",
+      "NaN",
+      "Infinity",
+      "1/2",
+    ]) {
       expect(() => ratioAnomalyReason(bad)).not.toThrow();
     }
   });

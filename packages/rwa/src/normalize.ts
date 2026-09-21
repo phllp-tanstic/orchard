@@ -24,31 +24,31 @@ export function parseDecimal(value: string): Decimal {
 }
 
 /**
+ * A plain unsigned decimal: "0", or a no-leading-zero integer part optionally
+ * followed by a fractional part. No sign, no exponent, no hex/binary/octal
+ * prefix, no digit-group separators - each of those parses as a number in
+ * some context (JS numeric literals, decimal.js exponent notation) but is
+ * not what the RWA data API documents `tokenToShareRatio` as, so DEC-013 A2
+ * treats any of them as an anomaly rather than silently accepting them.
+ */
+const PLAIN_DECIMAL_PATTERN = /^(0|[1-9]\d*)(\.\d+)?$/;
+
+/**
  * Validates tokenToShareRatio before it ever reaches a NUMERIC column or a
- * division. Returns a human-readable reason when the value is unusable
- * (empty, non-numeric, zero, or negative - none of these are meaningful
- * share ratios), or undefined when it's fine. Never throws - callers use
- * this to record a ratio anomaly and keep the run INCOMPLETE rather than
- * crash or attempt to store an invalid NUMERIC.
+ * division. Returns a human-readable reason when the value is unusable, or
+ * undefined when it's fine. Never throws - callers use this to record a
+ * ratio anomaly and keep the run INCOMPLETE rather than crash or attempt to
+ * store an invalid NUMERIC.
  */
 export function ratioAnomalyReason(tokenToShareRatio: string): string | undefined {
   if (tokenToShareRatio.trim() === "") {
     return "tokenToShareRatio is empty";
   }
-  let ratio: Decimal;
-  try {
-    ratio = new Decimal(tokenToShareRatio);
-  } catch {
-    return `tokenToShareRatio is not a valid number: "${tokenToShareRatio}"`;
+  if (!PLAIN_DECIMAL_PATTERN.test(tokenToShareRatio)) {
+    return `tokenToShareRatio is not a plain decimal number (no sign, exponent, alternate base, or digit separators): "${tokenToShareRatio}"`;
   }
-  if (ratio.isNaN() || !ratio.isFinite()) {
-    return `tokenToShareRatio is not a valid number: "${tokenToShareRatio}"`;
-  }
-  if (ratio.isZero()) {
+  if (new Decimal(tokenToShareRatio).isZero()) {
     return "tokenToShareRatio is zero";
-  }
-  if (ratio.isNegative()) {
-    return `tokenToShareRatio is negative: "${tokenToShareRatio}"`;
   }
   return undefined;
 }
