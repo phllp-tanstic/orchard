@@ -233,4 +233,49 @@ describe("evidence recorder (integration, real Postgres)", () => {
     const current = await getProbeRunCurrent(appPool, randomUUID());
     expect(current).toBeUndefined();
   });
+
+  describe("terminal-event concurrency (DEC-013, migration 005)", () => {
+    it("under two concurrent terminal inserts for the same run, exactly one succeeds", async () => {
+      const probeRunId = await openProbeRun(appPool, { gitSha: "x", clientVersion: "0.0.0-test" });
+
+      const results = await Promise.allSettled([
+        closeProbeRun(appPool, { probeRunId, status: "COMPLETE" }),
+        closeProbeRun(appPool, { probeRunId, status: "FAILED" }),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === "fulfilled");
+      const rejected = results.filter((r) => r.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(
+        ProbeRunAlreadyTerminalError,
+      );
+
+      const terminalRows = await migratorPool.query(
+        `SELECT status FROM evidence.probe_run_event
+         WHERE probe_run_id = $1 AND status IN ('COMPLETE', 'INCOMPLETE', 'FAILED')`,
+        [probeRunId],
+      );
+      expect(terminalRows.rowCount).toBe(1);
+
+      const current = await getProbeRunCurrent(appPool, probeRunId);
+      expect(["COMPLETE", "FAILED"]).toContain(current?.status);
+      expect(current?.finishedAt).not.toBeNull();
+    });
+
+    it("rejects a RUNNING event recorded after a terminal event", async () => {
+      const probeRunId = await openProbeRun(appPool, { gitSha: "x", clientVersion: "0.0.0-test" });
+      await closeProbeRun(appPool, { probeRunId, status: "COMPLETE" });
+
+      await expect(
+        appPool.query(
+          `INSERT INTO evidence.probe_run_event (probe_run_id, status) VALUES ($1, 'RUNNING')`,
+          [probeRunId],
+        ),
+      ).rejects.toThrow(/already has a terminal event/);
+
+      const current = await getProbeRunCurrent(appPool, probeRunId);
+      expect(current?.status).toBe("COMPLETE");
+    });
+  });
 });
