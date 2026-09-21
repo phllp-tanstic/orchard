@@ -220,6 +220,12 @@ importers:
 
   packages/evidence:
     dependencies:
+      '@orchard/binance':
+        specifier: workspace:*
+        version: link:../binance
+      dotenv:
+        specifier: ^18.0.1
+        version: 18.0.1
       pg:
         specifier: ^8.23.0
         version: 8.23.0

@@ -18,7 +18,8 @@
     "test": "vitest run --exclude \"**/*.integration.test.ts\"",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "migrate:up": "tsx db/migrate.ts up",
-    "migrate:down": "tsx db/migrate.ts down"
+    "migrate:down": "tsx db/migrate.ts down",
+    "evidence:export": "tsx packages/evidence/src/export-cli.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
