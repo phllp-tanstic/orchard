@@ -53,6 +53,27 @@ Status vocabulary for decisions: `APPROVED`, `OPEN`.
   owner role. The report generator only marks a run `COMPLETE` from a `COMPLETE` event; a run
   with no terminal event is never reported complete.
 
+### DEC-011
+
+- **Status:** APPROVED
+- **Date:** 2026-09-21
+- **Decision:** T1-T4 of Feature 001-A may be pushed to a review branch
+  (`feat/f001a-t1-t4`) for owner review. `main` is not advanced — it stays at
+  `origin/main` until the owner separately approves a merge. No push to `main`
+  is authorized by this decision.
+
+### DEC-012
+
+- **Status:** APPROVED
+- **Date:** 2026-09-21
+- **Decision:** `packages/rwa`'s zod schema keeps `decimals` as `z.string()`,
+  strict, per the RWA data docs' parameter table (which documents it as
+  STRING), even though that same doc page's example response shows
+  `"decimals": 18` as a bare number. The discrepancy is logged in
+  `docs/DEVEX_CANDIDATES.md` for the owner to reproduce or discard once a
+  live call is made. A number-shaped `decimals` fails schema validation
+  visibly, naming the field, rather than being silently coerced.
+
 ## Open
 
 ### DEC-003
