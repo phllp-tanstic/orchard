@@ -1,13 +1,20 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
  * Enforces AGENTS.md's fixture-isolation rule: test fixtures live only in
  * test/fixtures/ (per package or per tool), are prefixed DOC_EXAMPLE_ or
  * SYNTHETIC_, and are never imported from `src`.
+ *
+ * Must use fileURLToPath, not manual `.pathname` parsing - a raw URL
+ * pathname percent-encodes spaces (e.g. a Windows user directory like
+ * "Aseja Oluwatobi"), which silently breaks every readdirSync below and
+ * makes every check in this file vacuously pass (0 files found - 0
+ * offenders, always "clean"). fileURLToPath decodes correctly.
  */
-const REPO_ROOT = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 function listFiles(dir: string, ignore: RegExp): string[] {
   let out: string[] = [];
@@ -33,10 +40,18 @@ function listFiles(dir: string, ignore: RegExp): string[] {
 const IGNORE = /^(node_modules|\.git|dist|coverage|\.turbo)$/;
 
 describe("fixture isolation", () => {
-  it("no src/ file imports from a test/fixtures/ path", () => {
+  it("no non-test src/ file imports from a test/fixtures/ path", () => {
+    // Co-located *.test.ts files under src/ are the intended, sole consumers
+    // of test/fixtures/ (see e.g. packages/binance/src/signer.test.ts) -
+    // "never imported from src" means never from runtime (non-test) code.
     const srcFiles = listFiles(join(REPO_ROOT, "packages"), IGNORE)
       .concat(listFiles(join(REPO_ROOT, "tools"), IGNORE))
-      .filter((f) => /[\\/]src[\\/]/.test(f) && /\.(ts|tsx|js|mjs)$/.test(f));
+      .filter(
+        (f) =>
+          /[\\/]src[\\/]/.test(f) &&
+          /\.(ts|tsx|js|mjs)$/.test(f) &&
+          !/\.test\.[jt]sx?$/.test(f),
+      );
 
     const offenders: string[] = [];
     for (const file of srcFiles) {
