@@ -32,6 +32,23 @@ describe("tokensDataSchema (schema drift)", () => {
     expect(() => tokensDataSchema.parse([wrongType, ...rest])).toThrow(ZodError);
   });
 
+  it("fails visibly, naming the field, when decimals is a number instead of a string (DEC-012: kept strict per docs' parameter table, see docs/DEVEX_CANDIDATES.md)", () => {
+    const [first, ...rest] = loadFixture() as Record<string, unknown>[];
+    const numericDecimals = { ...first, decimals: 18 };
+    expect(() => tokensDataSchema.parse([numericDecimals, ...rest])).toThrow(ZodError);
+
+    try {
+      tokensDataSchema.parse([numericDecimals, ...rest]);
+      expect.unreachable("expected tokensDataSchema.parse to throw for numeric decimals");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ZodError);
+      const zodErr = err as ZodError;
+      const decimalsIssue = zodErr.issues.find((issue) => issue.path.includes("decimals"));
+      expect(decimalsIssue).toBeDefined();
+      expect(decimalsIssue?.path).toContain("decimals");
+    }
+  });
+
   it("keeps and reports unknown extra fields rather than silently dropping them", () => {
     const [first, ...rest] = loadFixture() as Record<string, unknown>[];
     const withExtra = { ...first, tokenIssuerNote: "new field the docs added later" };
