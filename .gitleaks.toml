@@ -22,9 +22,15 @@ regex = '''(?i)DATABASE_URL["']?[ \t]*[=:][ \t]*["']?postgres(?:ql)?://[^:@/\s"'
 keywords = ["database_url"]
 
 [allowlist]
-description = "Variable names with no value (env templates), captured by the generic rule across a newline"
+description = "Variable names with no value (env templates, captured by the generic rule across a newline), and synthetic test fixtures"
 regexTarget = "secret"
 regexes = [
   '''^BINANCE_WEB3_[A-Z_]+=$''',
   '''^DATABASE_URL=$''',
+]
+# Only test/fixtures/ files prefixed SYNTHETIC_ or DOC_EXAMPLE_ (never real
+# secrets by policy - AGENTS.md fixture-isolation rule). Scoped narrowly by
+# path so it never exempts source, evidence, or db content.
+paths = [
+  '''(^|/)test/fixtures/(SYNTHETIC_|DOC_EXAMPLE_)[^/]+$''',
 ]
