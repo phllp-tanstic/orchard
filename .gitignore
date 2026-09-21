@@ -5,6 +5,12 @@ coverage/
 *.log
 .DS_Store
 
+# workspace tooling
+*.tsbuildinfo
+
+# generated reports (owner reviews and commits by hand, see AGENTS.md)
+reports/
+
 # secrets
 .env
 .env.*
