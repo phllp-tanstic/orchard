@@ -1,6 +1,7 @@
 import "dotenv/config";
-import { afterAll, describe, expect, it } from "vitest";
-import { Pool } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Pool } from "pg";
+import { createIsolatedDatabase, type IsolatedDatabase } from "./testing/isolation.js";
 
 /**
  * Migration 007 (DEC-014 option 1): orchard_migrator is created explicitly
@@ -10,16 +11,21 @@ import { Pool } from "pg";
  * ownership landed on it, not on current_user.
  */
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var ${name} for integration tests`);
-  return value;
-}
+// DEC-017: this file gets its own database, cloned from a shared template -
+// see docs/MILESTONE_STATUS.md's "Integration-test deadlock" incident. Note
+// orchard_migrator is a cluster-wide role (roles aren't per-database), so
+// its existence/ownership assertions here hold regardless of which
+// per-file database this test happens to run against.
+let db: IsolatedDatabase;
+let migratorPool: Pool;
 
-const migratorPool = new Pool({ connectionString: requireEnv("DATABASE_URL") });
+beforeAll(async () => {
+  db = await createIsolatedDatabase();
+  migratorPool = db.migratorPool;
+});
 
 afterAll(async () => {
-  await migratorPool.end();
+  await db.teardown();
 });
 
 describe("orchard_migrator bootstrap (DEC-014, migration 007)", () => {

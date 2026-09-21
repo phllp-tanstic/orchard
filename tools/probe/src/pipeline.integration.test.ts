@@ -1,24 +1,27 @@
 import "dotenv/config";
-import { afterAll, describe, expect, it } from "vitest";
-import { Pool } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Pool } from "pg";
 import {
   openProbeRun,
   closeProbeRun,
   getProbeRunCurrent,
   recordProviderCall,
 } from "@orchard/evidence";
+import { createIsolatedDatabase, type IsolatedDatabase } from "@orchard/evidence/testing";
 import { runRwaUniverseProbe, type RequestClient, type RequestSpec } from "./pipeline.js";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var ${name} for integration tests`);
-  return value;
-}
+// DEC-017: this file gets its own database, cloned from a shared template -
+// see docs/MILESTONE_STATUS.md's "Integration-test deadlock" incident.
+let db: IsolatedDatabase;
+let appPool: Pool;
 
-const appPool = new Pool({ connectionString: requireEnv("ORCHARD_APP_DATABASE_URL") });
+beforeAll(async () => {
+  db = await createIsolatedDatabase();
+  appPool = db.appPool;
+});
 
 afterAll(async () => {
-  await appPool.end();
+  await db.teardown();
 });
 
 const PLATFORMS = [

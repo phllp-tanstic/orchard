@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { afterAll, describe, expect, it } from "vitest";
-import { Pool } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Pool } from "pg";
 import type { ProviderCallRecord } from "@orchard/binance";
 import {
   openProbeRun,
@@ -11,19 +11,22 @@ import {
   recordProviderCall,
 } from "./recorder.js";
 import { ProbeRunAlreadyTerminalError } from "./errors.js";
+import { createIsolatedDatabase, type IsolatedDatabase } from "./testing/isolation.js";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var ${name} for integration tests`);
-  return value;
-}
+// DEC-017: this file gets its own database, cloned from a shared template -
+// see docs/MILESTONE_STATUS.md's "Integration-test deadlock" incident.
+let db: IsolatedDatabase;
+let migratorPool: Pool;
+let appPool: Pool;
 
-const migratorPool = new Pool({ connectionString: requireEnv("DATABASE_URL") });
-const appPool = new Pool({ connectionString: requireEnv("ORCHARD_APP_DATABASE_URL") });
+beforeAll(async () => {
+  db = await createIsolatedDatabase();
+  migratorPool = db.migratorPool;
+  appPool = db.appPool;
+});
 
 afterAll(async () => {
-  await migratorPool.end();
-  await appPool.end();
+  await db.teardown();
 });
 
 function sampleCallRecord(overrides: Partial<ProviderCallRecord> = {}): ProviderCallRecord {
