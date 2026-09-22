@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+set -e
+
+REQUIRED_VERSION="8.30.1"
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "ERROR: gitleaks is not installed. This repository requires gitleaks $REQUIRED_VERSION"
+  echo "for the pre-commit secret scan (see .gitleaks.toml, docs/specs/F001A-spec.md T1)."
+  echo "Install: https://github.com/gitleaks/gitleaks#installing"
+  echo "Then verify with: gitleaks version"
+  exit 1
+fi
+
+INSTALLED_VERSION="$(gitleaks version 2>/dev/null | tr -d '[:space:]')"
+
+if [ "$INSTALLED_VERSION" != "$REQUIRED_VERSION" ]; then
+  echo "ERROR: gitleaks $REQUIRED_VERSION is required, found '$INSTALLED_VERSION'."
+  echo "Install $REQUIRED_VERSION: https://github.com/gitleaks/gitleaks/releases/tag/v$REQUIRED_VERSION"
+  exit 1
+fi
+
+gitleaks git --staged -c .gitleaks.toml --no-banner

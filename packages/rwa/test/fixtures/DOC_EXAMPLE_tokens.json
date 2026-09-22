@@ -1,0 +1,58 @@
+[
+  {
+    "binanceChainId": "56",
+    "tokenContractAddress": "0x1111111111111111111111111111111111111a",
+    "platformId": "ondo",
+    "assetType": 1,
+    "tokenName": "Example Stock A (Ondo)",
+    "tokenSymbol": "EXAo",
+    "tokenLogoUrl": "https://example.invalid/exa.png",
+    "decimals": "18",
+    "underlyingTicker": "EXA",
+    "underlyingName": "Example Corp",
+    "underlyingNameZh": null,
+    "tokenToShareRatio": "1",
+    "tags": null,
+    "statusInfo": {
+      "openState": true,
+      "marketStatus": "regular",
+      "reasonCode": null,
+      "reasonMsg": null,
+      "nextOpenTime": null,
+      "nextCloseTime": null
+    },
+    "tokenPrice": "100.00",
+    "referencePrice": "100.01",
+    "volume24H": "1000",
+    "marketCap": "1000000",
+    "peRatioTTM": null
+  },
+  {
+    "binanceChainId": "56",
+    "tokenContractAddress": "0x2222222222222222222222222222222222222b",
+    "platformId": "bstock",
+    "assetType": 1,
+    "tokenName": "Example Stock A (bStock)",
+    "tokenSymbol": "EXAb",
+    "tokenLogoUrl": "https://example.invalid/exa2.png",
+    "decimals": "18",
+    "underlyingTicker": "EXA",
+    "underlyingName": "Example Corp",
+    "underlyingNameZh": null,
+    "tokenToShareRatio": "0.1",
+    "tags": ["alpha"],
+    "statusInfo": {
+      "openState": false,
+      "marketStatus": "closed",
+      "reasonCode": "MARKET_CLOSED",
+      "reasonMsg": null,
+      "nextOpenTime": 1893456000000,
+      "nextCloseTime": null
+    },
+    "tokenPrice": "10.00",
+    "referencePrice": "10.001",
+    "volume24H": "500",
+    "marketCap": "500000",
+    "peRatioTTM": "15.2"
+  }
+]

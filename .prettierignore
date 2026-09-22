@@ -1,0 +1,12 @@
+dist
+coverage
+node_modules
+.turbo
+reports
+evidence/raw
+pnpm-lock.yaml
+docs/ORCHARD_AGENT_INSTRUCTIONS.md
+docs/ORCHARD_HACKATHON_RESOURCES_AND_ROADMAP.md
+docs/ORCHARD_PRODUCTION_BLUEPRINT.md
+docs/specs/F001A-spec.md
+AGENTS.md

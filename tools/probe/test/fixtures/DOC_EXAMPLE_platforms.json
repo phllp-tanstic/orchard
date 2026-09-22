@@ -1,0 +1,16 @@
+[
+  {
+    "platformId": "ondo",
+    "tickerCount": 1,
+    "chainDistribution": [{ "binanceChainId": "56", "tokenCount": 1 }],
+    "website": "https://ondo.example.invalid",
+    "logoUrl": null
+  },
+  {
+    "platformId": "bstock",
+    "tickerCount": 1,
+    "chainDistribution": [{ "binanceChainId": "56", "tokenCount": 1 }],
+    "website": "https://bstock.example.invalid",
+    "logoUrl": null
+  }
+]
