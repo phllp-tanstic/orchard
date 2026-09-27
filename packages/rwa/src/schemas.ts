@@ -33,7 +33,9 @@ export const marketStatusSchema = z.enum([
 export const statusInfoSchema = z
   .object({
     openState: z.boolean(),
-    marketStatus: marketStatusSchema,
+    // DEC-020: confirmed live null on the tokens endpoint (bstock, chain 56,
+    // probe_run e2e78fa9-6ff2-4daa-877b-592439128c5e) - see docs/DEVEX_LOG.md.
+    marketStatus: marketStatusSchema.nullable(),
     reasonCode: z.string().nullable(),
     reasonMsg: z.string().nullable(),
     nextOpenTime: z.number().nullable(),
@@ -70,13 +72,18 @@ export const tokenSchema = z
     binanceChainId: z.string(),
     tokenContractAddress: z.string(),
     platformId: z.string(),
-    assetType: assetTypeSchema,
+    // DEC-020: confirmed live null on the tokens endpoint (ondo, chain 56,
+    // probe_run e2e78fa9-6ff2-4daa-877b-592439128c5e) - see docs/DEVEX_LOG.md.
+    // A null assetType or underlyingName can't be meaningfully grouped or
+    // typed; tools/probe's pipeline excludes such tokens from
+    // grouping/normalization rather than passing them through as valid data.
+    assetType: assetTypeSchema.nullable(),
     tokenName: z.string(),
     tokenSymbol: z.string(),
     tokenLogoUrl: z.string(),
     decimals: z.string(),
     underlyingTicker: z.string(),
-    underlyingName: z.string(),
+    underlyingName: z.string().nullable(),
     underlyingNameZh: z.string().nullable().optional(),
     tokenToShareRatio: z.string(),
     tags: z.array(z.string()).nullable().optional(),

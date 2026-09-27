@@ -6,6 +6,7 @@ import { tokensDataSchema } from "./schemas.js";
 import {
   groupByUnderlyingTicker,
   multiRepresentationTickers,
+  partitionCompleteTokens,
   toRepresentation,
 } from "./grouping.js";
 
@@ -14,7 +15,16 @@ const FIXTURE_PATH = join(HERE, "..", "test", "fixtures", "DOC_EXAMPLE_tokens.js
 
 function loadTokens() {
   const raw = JSON.parse(readFileSync(FIXTURE_PATH, "utf8"));
-  return tokensDataSchema.parse(raw);
+  const { complete, incomplete } = partitionCompleteTokens(tokensDataSchema.parse(raw));
+  // Fixture is known-complete; a non-empty `incomplete` here would mean the
+  // fixture drifted and every test below is silently exercising fewer
+  // tokens than it thinks.
+  if (incomplete.length > 0) {
+    throw new Error(
+      `DOC_EXAMPLE_tokens.json fixture has ${incomplete.length} incomplete token(s) - update the fixture or this test file`,
+    );
+  }
+  return complete;
 }
 
 describe("groupByUnderlyingTicker", () => {
@@ -78,5 +88,57 @@ describe("groupByUnderlyingTicker", () => {
     expect(reps[0]!.impliedPricePerShare?.toString()).toBe("100");
     // token 2: tokenPrice 10.00, ratio 0.1 -> implied 100
     expect(reps[1]!.impliedPricePerShare?.toString()).toBe("100");
+  });
+});
+
+describe("partitionCompleteTokens (DEC-020: null assetType / underlyingName)", () => {
+  function rawTokens() {
+    const raw = JSON.parse(readFileSync(FIXTURE_PATH, "utf8"));
+    return tokensDataSchema.parse(raw);
+  }
+
+  it("keeps a token whose assetType and underlyingName are both non-null", () => {
+    const { complete, incomplete } = partitionCompleteTokens(rawTokens());
+    expect(complete).toHaveLength(2);
+    expect(incomplete).toEqual([]);
+  });
+
+  it("excludes a token with null assetType, reporting which field was null", () => {
+    const [first, second] = rawTokens();
+    const withNullAssetType = { ...first!, assetType: null };
+    const { complete, incomplete } = partitionCompleteTokens([withNullAssetType, second!]);
+    expect(complete).toHaveLength(1);
+    expect(complete[0]!.tokenContractAddress).toBe(second!.tokenContractAddress);
+    expect(incomplete).toEqual([
+      {
+        platformId: first!.platformId,
+        tokenContractAddress: first!.tokenContractAddress,
+        tokenSymbol: first!.tokenSymbol,
+        nullFields: ["assetType"],
+      },
+    ]);
+  });
+
+  it("excludes a token with null underlyingName, reporting which field was null", () => {
+    const [first, second] = rawTokens();
+    const withNullUnderlyingName = { ...first!, underlyingName: null };
+    const { complete, incomplete } = partitionCompleteTokens([withNullUnderlyingName, second!]);
+    expect(complete).toHaveLength(1);
+    expect(incomplete).toEqual([
+      {
+        platformId: first!.platformId,
+        tokenContractAddress: first!.tokenContractAddress,
+        tokenSymbol: first!.tokenSymbol,
+        nullFields: ["underlyingName"],
+      },
+    ]);
+  });
+
+  it("reports both null fields when assetType and underlyingName are both null", () => {
+    const [first, second] = rawTokens();
+    const withBothNull = { ...first!, assetType: null, underlyingName: null };
+    const { complete, incomplete } = partitionCompleteTokens([withBothNull, second!]);
+    expect(complete).toHaveLength(1);
+    expect(incomplete[0]!.nullFields).toEqual(["assetType", "underlyingName"]);
   });
 });

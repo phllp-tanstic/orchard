@@ -12,14 +12,58 @@ export interface TokenRepresentation {
   tokenToShareRatio: string;
   tokenPrice: string;
   referencePrice: string;
-  marketStatus: string;
+  /** DEC-020: confirmed live null on the tokens endpoint - never excluded, just carried through. */
+  marketStatus: string | null;
   /** undefined when tokenToShareRatio failed validation - see ratioAnomalyReason below. */
   impliedPricePerShare: Decimal | undefined;
   /** Set when tokenToShareRatio is empty, non-numeric, zero, or negative - never thrown. */
   ratioAnomalyReason: string | undefined;
 }
 
-export function toRepresentation(token: Token): TokenRepresentation {
+/** A token whose assetType and underlyingName are known non-null - the only kind toRepresentation accepts. */
+export type CompleteToken = Token & { assetType: AssetType; underlyingName: string };
+
+export type IncompleteTokenField = "assetType" | "underlyingName";
+
+export interface IncompleteTokenReason {
+  platformId: string;
+  tokenContractAddress: string;
+  tokenSymbol: string;
+  nullFields: IncompleteTokenField[];
+}
+
+/**
+ * DEC-020: a token with a null assetType or underlyingName can't be
+ * meaningfully grouped or typed - confirmed live on the tokens endpoint (see
+ * docs/DEVEX_LOG.md). Splits tokens into ones safe to build a
+ * TokenRepresentation from and ones to report as incomplete instead
+ * (data-quality observation, not a fail-closed condition).
+ */
+export function partitionCompleteTokens(tokens: readonly Token[]): {
+  complete: CompleteToken[];
+  incomplete: IncompleteTokenReason[];
+} {
+  const complete: CompleteToken[] = [];
+  const incomplete: IncompleteTokenReason[] = [];
+  for (const token of tokens) {
+    const nullFields: IncompleteTokenField[] = [];
+    if (token.assetType === null) nullFields.push("assetType");
+    if (token.underlyingName === null) nullFields.push("underlyingName");
+    if (nullFields.length > 0) {
+      incomplete.push({
+        platformId: token.platformId,
+        tokenContractAddress: token.tokenContractAddress,
+        tokenSymbol: token.tokenSymbol,
+        nullFields,
+      });
+    } else {
+      complete.push(token as CompleteToken);
+    }
+  }
+  return { complete, incomplete };
+}
+
+export function toRepresentation(token: CompleteToken): TokenRepresentation {
   const anomaly = ratioAnomalyReason(token.tokenToShareRatio);
   return {
     binanceChainId: token.binanceChainId,

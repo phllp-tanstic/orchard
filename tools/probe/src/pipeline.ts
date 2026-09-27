@@ -13,6 +13,7 @@ import {
   bpsDifference,
   groupByUnderlyingTicker,
   multiRepresentationTickers,
+  partitionCompleteTokens,
   toRepresentation,
   summarizeBps,
   classifyReferencePrice,
@@ -23,6 +24,7 @@ import {
   type TokenRepresentation,
 } from "@orchard/rwa";
 import type {
+  IncompleteTokenRecord,
   InvalidRatioEntry,
   RatioAnomaly,
   ReconciliationEntry,
@@ -115,6 +117,7 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
   const reconciliation: ReconciliationEntry[] = [];
   const platformCounts: Record<string, number> = {};
   const invalidRatios: InvalidRatioEntry[] = [];
+  const incompleteTokenRecords: IncompleteTokenRecord[] = [];
 
   for (const platform of platforms) {
     try {
@@ -129,9 +132,16 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
       const extra = unknownArrayItemKeys(tokenSchema.shape, raw as Record<string, unknown>[]);
       if (extra.length) unknownFields[`tokens:${platform.platformId}`] = extra;
 
-      const reps = tokens.map(toRepresentation);
+      const { complete, incomplete } = partitionCompleteTokens(tokens);
+      incompleteTokenRecords.push(...incomplete);
+
+      const reps = complete.map(toRepresentation);
       representations.push(...reps);
-      platformCounts[platform.platformId] = reps.length;
+      // Reconciliation counts every fetched token, including ones excluded
+      // from grouping below - the platform's own tokenCount doesn't know or
+      // care about our data-quality filtering (DEC-020: that's an
+      // observation, not a fail-closed condition).
+      platformCounts[platform.platformId] = tokens.length;
 
       for (const rep of reps) {
         if (rep.ratioAnomalyReason === undefined) continue;
@@ -150,19 +160,19 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
       const chainEntry = platform.chainDistribution.find(
         (c) => c.binanceChainId === deps.targetChainId,
       );
-      const ok = chainEntry !== undefined && chainEntry.tokenCount === reps.length;
+      const ok = chainEntry !== undefined && chainEntry.tokenCount === tokens.length;
       reconciliation.push({
         platformId: platform.platformId,
         targetChainId: deps.targetChainId,
         reportedTokenCount: chainEntry?.tokenCount,
-        actualTokenCount: reps.length,
+        actualTokenCount: tokens.length,
         ok,
       });
       if (!ok) {
         reasons.push(
           `reconciliation mismatch for platform ${platform.platformId}: platform reports ${
             chainEntry?.tokenCount ?? "no chain-56 entry"
-          } tokens for chain ${deps.targetChainId}, but ${reps.length} were fetched - universe untrusted`,
+          } tokens for chain ${deps.targetChainId}, but ${tokens.length} were fetched - universe untrusted`,
         );
       }
     } catch (err) {
@@ -291,7 +301,10 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
   for (const rep of representations) {
     const label = ASSET_TYPE_LABEL[rep.assetType];
     assetTypeBreakdown[label] = (assetTypeBreakdown[label] ?? 0) + 1;
-    marketStatusBreakdown[rep.marketStatus] = (marketStatusBreakdown[rep.marketStatus] ?? 0) + 1;
+    // DEC-020: marketStatus is confirmed nullable live; key it explicitly
+    // rather than relying on JS's implicit null->"null" object-key coercion.
+    const statusKey = rep.marketStatus ?? "null";
+    marketStatusBreakdown[statusKey] = (marketStatusBreakdown[statusKey] ?? 0) + 1;
   }
 
   const overlapMatrix = [...groups.values()].map((g) => ({
@@ -323,6 +336,7 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
     overlapMatrix,
     ratioAnomalies,
     invalidRatios,
+    incompleteTokenRecords,
     staleness,
     referencePriceAnalysis,
     unknownFields,
@@ -360,6 +374,7 @@ function emptyReport(
     overlapMatrix: [],
     ratioAnomalies: [],
     invalidRatios: [],
+    incompleteTokenRecords: [],
     staleness: [],
     referencePriceAnalysis: {
       vsTokenPriceBps: { sampleSize: 0, min: undefined, max: undefined, medianAbs: undefined },
