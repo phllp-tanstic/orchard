@@ -25,6 +25,7 @@ export const marketStatusSchema = z.enum([
   "regular",
   "postmarket",
   "overnight",
+  "offhours",
   "closed",
   "pause",
 ]);
