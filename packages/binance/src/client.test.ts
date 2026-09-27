@@ -259,3 +259,61 @@ describe("BinanceWeb3Client evidence hook", () => {
     expect(records[0]!.responseJson).toEqual({ code: "0", data: { ok: true } });
   });
 });
+
+describe("BinanceWeb3Client base URL normalisation", () => {
+  // Regression: the authentication doc states the base URL as
+  // `https://web3.binance.com/build`, and the client prepends its own
+  // `/build`. Before this was normalised the wire path became
+  // `/build/build/...`, which is not an API route: the live edge answered
+  // HTTP 202 with `x-amzn-waf-action: challenge` and a zero-byte body on
+  // every call.
+  const cases: ReadonlyArray<readonly [string, string]> = [
+    ["https://web3.binance.com", "base URL without the prefix"],
+    ["https://web3.binance.com/build", "base URL with the documented /build prefix"],
+    ["https://web3.binance.com/build/", "base URL with a trailing slash after /build"],
+  ];
+
+  for (const [baseUrl, label] of cases) {
+    it(`sends exactly one /build segment for a ${label}`, async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ code: "0", data: [] }));
+      const client = new BinanceWeb3Client({
+        apiKey: "SYNTHETIC_KEY",
+        apiSecret: "SYNTHETIC_SECRET",
+        baseUrl,
+        fetchImpl,
+      });
+
+      await client.request({ method: "GET", path: "/api/v1/dex/market/rwa/platforms" });
+
+      const url = String(fetchImpl.mock.calls[0]?.[0]);
+      expect(url).toBe("https://web3.binance.com/build/api/v1/dex/market/rwa/platforms");
+      expect(url).not.toContain("/build/build");
+    });
+  }
+
+  it("signs the same single-/build path it puts on the wire", async () => {
+    const records: ProviderCallRecord[] = [];
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ code: "0", data: [] }));
+    const client = new BinanceWeb3Client({
+      apiKey: "SYNTHETIC_KEY",
+      apiSecret: "SYNTHETIC_SECRET",
+      baseUrl: "https://web3.binance.com/build",
+      fetchImpl,
+      onCall: (record) => records.push(record),
+    });
+
+    await client.request({
+      method: "GET",
+      path: "/api/v1/dex/aggregator/supported/chain",
+      query: { binanceChainId: 56 },
+    });
+
+    const url = new URL(String(fetchImpl.mock.calls[0]?.[0]));
+    // The signed requestPath is what recordCall reports as `endpoint`; it must
+    // match the path actually requested, or the gateway rejects the signature.
+    expect(records[0]?.endpoint).toBe(
+      "/build/api/v1/dex/aggregator/supported/chain?binanceChainId=56",
+    );
+    expect(`${url.pathname}${url.search}`).toBe(records[0]?.endpoint);
+  });
+});

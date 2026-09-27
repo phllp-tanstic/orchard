@@ -10,6 +10,7 @@ import type {
 } from "./types.js";
 
 const BUILD_PREFIX = "/build";
+const TRAILING_BUILD_PREFIX = /\/build$/;
 const DEFAULT_MAX_RETRIES = 3;
 const RATE_LIMIT_HEADER_PREFIX = "x-oc-ratelimit-";
 
@@ -54,7 +55,15 @@ export class BinanceWeb3Client {
     }
     this.apiKey = options.apiKey;
     this.apiSecret = options.apiSecret;
-    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+    // The client owns BUILD_PREFIX: it prepends `/build` to every path and
+    // signs that exact string. The authentication doc states the base URL as
+    // `https://web3.binance.com/build`, so a configured base URL that already
+    // carries the prefix must have it stripped here - otherwise the wire path
+    // becomes `/build/build/...`, which is not an API route. That path falls
+    // through to the WAF-protected web app, which answers HTTP 202 with
+    // `x-amzn-waf-action: challenge` and a zero-byte body, never a provider
+    // envelope. Accept the base URL with or without the prefix.
+    this.baseUrl = options.baseUrl.replace(/\/+$/, "").replace(TRAILING_BUILD_PREFIX, "");
     this.recvWindowMs = options.recvWindowMs;
     this.maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.fetchImpl = options.fetchImpl ?? fetch;
