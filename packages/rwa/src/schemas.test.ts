@@ -4,6 +4,7 @@ import { join, dirname } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 import {
+  marketStatusSchema,
   tokenSchema,
   tokensDataSchema,
   unknownArrayItemKeys,
@@ -74,5 +75,24 @@ describe("tokensDataSchema (schema drift)", () => {
   it("unknownObjectKeys reports nothing for a fully-known object", () => {
     const [first] = loadFixture() as Record<string, unknown>[];
     expect(unknownObjectKeys(tokenSchema.shape, first!)).toEqual([]);
+  });
+});
+
+describe("marketStatusSchema", () => {
+  it('parses "offhours" (DEC-019: confirmed live - see docs/DEVEX_LOG.md)', () => {
+    expect(marketStatusSchema.parse("offhours")).toBe("offhours");
+  });
+
+  it('accepts a token whose statusInfo.marketStatus is "offhours"', () => {
+    const [first, ...rest] = loadFixture() as Record<string, unknown>[];
+    const withOffhours = {
+      ...first,
+      statusInfo: {
+        ...(first!["statusInfo"] as Record<string, unknown>),
+        marketStatus: "offhours",
+      },
+    };
+    const parsed = tokensDataSchema.parse([withOffhours, ...rest]);
+    expect(parsed[0]!.statusInfo.marketStatus).toBe("offhours");
   });
 });
