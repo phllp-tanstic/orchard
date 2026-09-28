@@ -594,3 +594,77 @@ describe("runRwaUniverseProbe - incomplete token records (DEC-020)", () => {
     ]);
   });
 });
+
+describe("runRwaUniverseProbe - /rwa/price batch size (DEC-024)", () => {
+  it("defaults to the measured-safe batch size (80), not PRICE_BATCH_MAX (100)", async () => {
+    const now = Date.UTC(2026, 8, 21, 12, 0, 0);
+    const priceRequestSizes: number[] = [];
+    const client: RequestClient = {
+      request: <T>(spec: RequestSpec) => {
+        if (spec.path === "/api/v1/dex/market/rwa/platforms") {
+          return Promise.resolve({ data: PLATFORMS_FIXTURE as T });
+        }
+        if (spec.path === "/api/v1/dex/market/rwa/tokens") {
+          const platformId = spec.query?.["platformId"];
+          const data = platformId === "ondo" ? [ondoToken()] : [bstockToken()];
+          return Promise.resolve({ data: data as T });
+        }
+        if (spec.path === "/api/v1/dex/market/rwa/price") {
+          const addresses = String(spec.query?.["tokenContractAddresses"]).split(",");
+          priceRequestSizes.push(addresses.length);
+          return Promise.resolve({ data: [] as T });
+        }
+        return Promise.resolve({ data: [] as T });
+      },
+    };
+
+    // Only 2 representations exist in this fixture set, so this asserts
+    // the batching loop's step size, not a literal 80-item request.
+    await runRwaUniverseProbe({
+      client,
+      evidence: fakeEvidence(),
+      gitSha: "test-sha",
+      clientVersion: "0.0.0-test",
+      targetChainId: "56",
+      now: () => new Date(now),
+    });
+
+    expect(priceRequestSizes).toEqual([2]); // one batch, both representations fit under 80
+  });
+
+  it("respects a caller-configured priceBatchSize, splitting into multiple requests", async () => {
+    const now = Date.UTC(2026, 8, 21, 12, 0, 0);
+    const priceRequestSizes: number[] = [];
+    const client: RequestClient = {
+      request: <T>(spec: RequestSpec) => {
+        if (spec.path === "/api/v1/dex/market/rwa/platforms") {
+          return Promise.resolve({ data: PLATFORMS_FIXTURE as T });
+        }
+        if (spec.path === "/api/v1/dex/market/rwa/tokens") {
+          const platformId = spec.query?.["platformId"];
+          const data = platformId === "ondo" ? [ondoToken()] : [bstockToken()];
+          return Promise.resolve({ data: data as T });
+        }
+        if (spec.path === "/api/v1/dex/market/rwa/price") {
+          const addresses = String(spec.query?.["tokenContractAddresses"]).split(",");
+          priceRequestSizes.push(addresses.length);
+          return Promise.resolve({ data: [] as T });
+        }
+        return Promise.resolve({ data: [] as T });
+      },
+    };
+
+    await runRwaUniverseProbe({
+      client,
+      evidence: fakeEvidence(),
+      gitSha: "test-sha",
+      clientVersion: "0.0.0-test",
+      targetChainId: "56",
+      now: () => new Date(now),
+      priceBatchSize: 1,
+    });
+
+    // 2 representations, batch size 1 -> 2 separate price requests.
+    expect(priceRequestSizes).toEqual([1, 1]);
+  });
+});

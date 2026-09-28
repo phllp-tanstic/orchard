@@ -3,10 +3,12 @@ export { buildPreHash, sign, isoMillisecondTimestamp } from "./signer.js";
 export { RateLimiter, systemClock, type Clock } from "./limiter.js";
 export {
   BinanceApiError,
+  BinanceNonJsonResponseError,
   BinanceRateLimitError,
   DOCUMENTED_CODES,
   NO_RETRY_CODES,
   type DocumentedCode,
+  type NonJsonResponseDetails,
   type ProviderEnvelope,
 } from "./errors.js";
 export type {

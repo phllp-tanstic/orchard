@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { sign } from "./signer.js";
-import { BinanceApiError, BinanceRateLimitError, type ProviderEnvelope } from "./errors.js";
+import {
+  BinanceApiError,
+  BinanceNonJsonResponseError,
+  BinanceRateLimitError,
+  type ProviderEnvelope,
+} from "./errors.js";
 import { RateLimiter } from "./limiter.js";
 import type {
   BinanceClientOptions,
@@ -13,6 +18,18 @@ const BUILD_PREFIX = "/build";
 const TRAILING_BUILD_PREFIX = /\/build$/;
 const DEFAULT_MAX_RETRIES = 3;
 const RATE_LIMIT_HEADER_PREFIX = "x-oc-ratelimit-";
+
+/** Omits keys whose value is undefined - required by exactOptionalPropertyTypes for optional fields. */
+function definedFields<T extends Record<string, unknown>>(
+  obj: T,
+): { [K in keyof T]?: Exclude<T[K], undefined> } {
+  const out: { [K in keyof T]?: Exclude<T[K], undefined> } = {};
+  for (const key of Object.keys(obj) as (keyof T)[]) {
+    const value = obj[key];
+    if (value !== undefined) out[key] = value as Exclude<T[typeof key], undefined>;
+  }
+  return out;
+}
 
 function encodeQuery(query: RequestSpec["query"]): string {
   if (!query) return "";
@@ -118,12 +135,24 @@ export class BinanceWeb3Client {
       let networkError: string | undefined;
       let rawResponseBody: string | undefined;
       let responseJson: unknown;
+      let httpStatusText: string | undefined;
+      let contentType: string | undefined;
+      let contentLength: string | undefined;
+      let wafAction: string | undefined;
+      let traceId: string | undefined;
+      let blockedBy: string | undefined;
 
       try {
         const requestInit: RequestInit = { method: spec.method, headers };
         if (spec.body !== undefined) requestInit.body = body;
         const response = await this.fetchImpl(url, requestInit);
         httpStatus = response.status;
+        httpStatusText = response.statusText;
+        contentType = response.headers.get("content-type") ?? undefined;
+        contentLength = response.headers.get("content-length") ?? undefined;
+        wafAction = response.headers.get("x-amzn-waf-action") ?? undefined;
+        traceId = response.headers.get("x-oc-trace-id") ?? undefined;
+        blockedBy = response.headers.get("x-oc-blocked-by") ?? undefined;
         rateLimitHeaders = extractRateLimitHeaders(response.headers);
         rawResponseBody = await response.text();
         try {
@@ -148,6 +177,12 @@ export class BinanceWeb3Client {
             rawResponseBody,
             responseJson,
             startedAt,
+            httpStatusText,
+            contentType,
+            contentLength,
+            wafAction,
+            traceId,
+            blockedBy,
           });
           lastError = new BinanceRateLimitError(retryAfterMs);
           if (attempt >= this.maxRetries) throw lastError;
@@ -156,9 +191,39 @@ export class BinanceWeb3Client {
         }
 
         if (responseJson === undefined) {
-          throw new Error(
-            `Binance Web3 API returned a non-JSON response body (HTTP ${httpStatus})`,
-          );
+          const nonJsonError = new BinanceNonJsonResponseError({
+            httpStatus,
+            statusText: httpStatusText,
+            contentType,
+            contentLength,
+            wafAction,
+            traceId,
+            blockedBy,
+          });
+          this.recordCall({
+            spec,
+            requestPath,
+            query,
+            attempt,
+            httpStatus,
+            providerCode,
+            rateLimitHeaders,
+            networkError,
+            rawResponseBody,
+            responseJson,
+            startedAt,
+            httpStatusText,
+            contentType,
+            contentLength,
+            wafAction,
+            traceId,
+            blockedBy,
+          });
+          lastError = nonJsonError;
+          if (!nonJsonError.isRetryable() || attempt >= this.maxRetries) {
+            throw nonJsonError;
+          }
+          continue;
         }
         const envelope = responseJson as ProviderEnvelope;
         providerCode = String(envelope.code);
@@ -174,6 +239,12 @@ export class BinanceWeb3Client {
           rawResponseBody,
           responseJson,
           startedAt,
+          httpStatusText,
+          contentType,
+          contentLength,
+          wafAction,
+          traceId,
+          blockedBy,
         });
 
         if (providerCode !== "0") {
@@ -193,7 +264,11 @@ export class BinanceWeb3Client {
           attempts: attempt,
         };
       } catch (err) {
-        if (err instanceof BinanceApiError || err instanceof BinanceRateLimitError) {
+        if (
+          err instanceof BinanceApiError ||
+          err instanceof BinanceRateLimitError ||
+          err instanceof BinanceNonJsonResponseError
+        ) {
           throw err;
         }
         networkError = err instanceof Error ? err.message : String(err);
@@ -209,6 +284,12 @@ export class BinanceWeb3Client {
           rawResponseBody,
           responseJson,
           startedAt,
+          httpStatusText,
+          contentType,
+          contentLength,
+          wafAction,
+          traceId,
+          blockedBy,
         });
         lastError = err;
         if (attempt >= this.maxRetries) throw lastError;
@@ -230,6 +311,12 @@ export class BinanceWeb3Client {
     rawResponseBody: string | undefined;
     responseJson: unknown;
     startedAt: number;
+    httpStatusText: string | undefined;
+    contentType: string | undefined;
+    contentLength: string | undefined;
+    wafAction: string | undefined;
+    traceId: string | undefined;
+    blockedBy: string | undefined;
   }): void {
     if (!this.onCall) return;
     const {
@@ -244,6 +331,12 @@ export class BinanceWeb3Client {
       rawResponseBody,
       responseJson,
       startedAt,
+      httpStatusText,
+      contentType,
+      contentLength,
+      wafAction,
+      traceId,
+      blockedBy,
     } = args;
     this.onCall({
       provider: "binance",
@@ -259,6 +352,14 @@ export class BinanceWeb3Client {
       requestQuery: spec.query,
       requestBody: spec.body,
       rawResponseBody,
+      ...definedFields({
+        httpStatusText,
+        contentType,
+        contentLength,
+        wafAction,
+        traceId,
+        blockedBy,
+      }),
       responseJson,
     });
   }
