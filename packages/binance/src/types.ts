@@ -54,6 +54,22 @@ export interface ProviderCallRecord {
   rawResponseBody: string | undefined;
   /** JSON.parse(rawResponseBody) when it parses as JSON; undefined otherwise. */
   responseJson: unknown;
+  /**
+   * Diagnostic fields for a non-JSON response body (e.g. a WAF challenge
+   * page, or a gateway-level rejection that never reaches the provider's
+   * own envelope). Optional and undefined when no HTTP response was
+   * received at all (network error) - present whenever a response was
+   * received, whether or not its body parsed as JSON.
+   */
+  httpStatusText?: string;
+  contentType?: string;
+  contentLength?: string;
+  /** x-amzn-waf-action, present only when the response passed through (or was blocked by) an AWS WAF. */
+  wafAction?: string;
+  /** x-oc-trace-id, present only when the provider's own gateway attaches a trace id. */
+  traceId?: string;
+  /** x-oc-blocked-by, present only when the provider's own gateway names what blocked the request. */
+  blockedBy?: string;
 }
 
 export interface BinanceCallResult<T> {

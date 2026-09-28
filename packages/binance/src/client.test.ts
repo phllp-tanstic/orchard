@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { BinanceWeb3Client } from "./client.js";
-import { BinanceApiError, BinanceRateLimitError, DOCUMENTED_CODES } from "./errors.js";
+import {
+  BinanceApiError,
+  BinanceNonJsonResponseError,
+  BinanceRateLimitError,
+  DOCUMENTED_CODES,
+} from "./errors.js";
 import type { ProviderCallRecord } from "./types.js";
 
 function jsonResponse(
@@ -203,6 +208,117 @@ describe("BinanceWeb3Client 429 handling", () => {
     await expect(
       client.request({ method: "GET", path: "/api/v1/dex/market/rwa/platforms" }),
     ).rejects.toBeInstanceOf(BinanceRateLimitError);
+  });
+});
+
+describe("BinanceWeb3Client non-JSON response handling", () => {
+  it("throws an informative BinanceNonJsonResponseError and makes exactly one attempt on HTTP 414", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response("Request-URI Too Long", {
+        status: 414,
+        statusText: "Request-URI Too Long",
+        headers: { "content-type": "text/plain", "content-length": "21" },
+      }),
+    );
+    const client = new BinanceWeb3Client({
+      apiKey: "SYNTHETIC_KEY",
+      apiSecret: "SYNTHETIC_SECRET",
+      baseUrl: "https://example.invalid",
+      fetchImpl,
+      maxRetries: 3,
+    });
+
+    try {
+      await client.request({ method: "GET", path: "/api/v1/dex/market/rwa/tokens" });
+      expect.unreachable("expected a BinanceNonJsonResponseError to be thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(BinanceNonJsonResponseError);
+      const nonJsonErr = err as BinanceNonJsonResponseError;
+      expect(nonJsonErr.httpStatus).toBe(414);
+      expect(nonJsonErr.contentType).toBe("text/plain");
+      expect(nonJsonErr.contentLength).toBe("21");
+      expect(nonJsonErr.message).toContain("414");
+      expect(nonJsonErr.message).toContain("content-type=text/plain");
+    }
+    // 414 is a 4xx other than 408/429 - never retried.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws an informative error citing the WAF header and makes exactly one attempt on HTTP 202", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 202,
+        headers: { "x-amzn-waf-action": "challenge", "x-oc-trace-id": "trace-abc123" },
+      }),
+    );
+    const client = new BinanceWeb3Client({
+      apiKey: "SYNTHETIC_KEY",
+      apiSecret: "SYNTHETIC_SECRET",
+      baseUrl: "https://example.invalid",
+      fetchImpl,
+      maxRetries: 3,
+    });
+
+    try {
+      await client.request({ method: "GET", path: "/api/v1/dex/market/rwa/tokens" });
+      expect.unreachable("expected a BinanceNonJsonResponseError to be thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(BinanceNonJsonResponseError);
+      const nonJsonErr = err as BinanceNonJsonResponseError;
+      expect(nonJsonErr.httpStatus).toBe(202);
+      expect(nonJsonErr.wafAction).toBe("challenge");
+      expect(nonJsonErr.traceId).toBe("trace-abc123");
+      expect(nonJsonErr.message).toContain("x-amzn-waf-action=challenge");
+      expect(nonJsonErr.message).toContain("x-oc-trace-id=trace-abc123");
+    }
+    // 202 is not retryable (not 408/429/5xx) - never retried.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("still retries a non-JSON HTTP 500 up to maxRetries", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockImplementation(
+        async () => new Response("<html>Internal Server Error</html>", { status: 500 }),
+      );
+    const client = new BinanceWeb3Client({
+      apiKey: "SYNTHETIC_KEY",
+      apiSecret: "SYNTHETIC_SECRET",
+      baseUrl: "https://example.invalid",
+      fetchImpl,
+      maxRetries: 3,
+    });
+
+    await expect(
+      client.request({ method: "GET", path: "/api/v1/dex/market/rwa/tokens" }),
+    ).rejects.toBeInstanceOf(BinanceNonJsonResponseError);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("records the diagnostic headers on the evidence record even when non-retryable", async () => {
+    const records: ProviderCallRecord[] = [];
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 202,
+        headers: { "x-amzn-waf-action": "challenge", "x-oc-blocked-by": "waf-rule-42" },
+      }),
+    );
+    const client = new BinanceWeb3Client({
+      apiKey: "SYNTHETIC_KEY",
+      apiSecret: "SYNTHETIC_SECRET",
+      baseUrl: "https://example.invalid",
+      fetchImpl,
+      onCall: (r) => records.push(r),
+    });
+
+    await expect(
+      client.request({ method: "GET", path: "/api/v1/dex/market/rwa/tokens" }),
+    ).rejects.toBeInstanceOf(BinanceNonJsonResponseError);
+
+    expect(records).toHaveLength(1);
+    expect(records[0]!.httpStatus).toBe(202);
+    expect(records[0]!.wafAction).toBe("challenge");
+    expect(records[0]!.blockedBy).toBe("waf-rule-42");
   });
 });
 

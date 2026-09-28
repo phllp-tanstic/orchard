@@ -60,3 +60,64 @@ export class BinanceRateLimitError extends Error {
     this.retryAfterMs = retryAfterMs;
   }
 }
+
+export interface NonJsonResponseDetails {
+  httpStatus: number;
+  statusText: string;
+  contentType: string | undefined;
+  contentLength: string | undefined;
+  /** Present only when the response passed through (or was blocked by) an AWS WAF. */
+  wafAction: string | undefined;
+  /** Present only when the provider's own gateway attaches a trace id. */
+  traceId: string | undefined;
+  /** Present only when the provider's own gateway names what blocked the request. */
+  blockedBy: string | undefined;
+}
+
+/**
+ * Thrown when a response's body doesn't parse as JSON - e.g. a WAF challenge
+ * page (HTTP 202, zero-byte body) or a gateway-level rejection (HTTP 414)
+ * that never reaches the provider's own envelope format. Carries every
+ * diagnostic header available so a caller (or the evidence recorder) never
+ * has to re-derive "why" from a bare "non-JSON" message.
+ */
+export class BinanceNonJsonResponseError extends Error {
+  readonly httpStatus: number;
+  readonly statusText: string;
+  readonly contentType: string | undefined;
+  readonly contentLength: string | undefined;
+  readonly wafAction: string | undefined;
+  readonly traceId: string | undefined;
+  readonly blockedBy: string | undefined;
+
+  constructor(details: NonJsonResponseDetails) {
+    const extras = [
+      details.contentType !== undefined ? `content-type=${details.contentType}` : undefined,
+      details.contentLength !== undefined ? `content-length=${details.contentLength}` : undefined,
+      details.wafAction !== undefined ? `x-amzn-waf-action=${details.wafAction}` : undefined,
+      details.traceId !== undefined ? `x-oc-trace-id=${details.traceId}` : undefined,
+      details.blockedBy !== undefined ? `x-oc-blocked-by=${details.blockedBy}` : undefined,
+    ].filter((s): s is string => s !== undefined);
+    super(
+      `Binance Web3 API returned a non-JSON response body (HTTP ${details.httpStatus} ${details.statusText})` +
+        (extras.length > 0 ? ` [${extras.join(", ")}]` : ""),
+    );
+    this.name = "BinanceNonJsonResponseError";
+    this.httpStatus = details.httpStatus;
+    this.statusText = details.statusText;
+    this.contentType = details.contentType;
+    this.contentLength = details.contentLength;
+    this.wafAction = details.wafAction;
+    this.traceId = details.traceId;
+    this.blockedBy = details.blockedBy;
+  }
+
+  /**
+   * Never retry a 4xx except 408 (request timeout) - 429 is handled
+   * separately by the client, before a body is even inspected. 5xx is
+   * retried, since it may be transient.
+   */
+  isRetryable(): boolean {
+    return this.httpStatus === 408 || (this.httpStatus >= 500 && this.httpStatus <= 599);
+  }
+}
