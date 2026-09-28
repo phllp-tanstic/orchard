@@ -112,6 +112,36 @@ describe("marketStatusSchema", () => {
     const parsed = tokensDataSchema.parse([withNullStatus, ...rest]);
     expect(parsed[0]!.statusInfo.marketStatus).toBeNull();
   });
+
+  it('parses "paused" (DEC-021: confirmed live - see docs/DEVEX_LOG.md)', () => {
+    expect(marketStatusSchema.parse("paused")).toBe("paused");
+  });
+
+  it('accepts a token whose statusInfo.marketStatus is "paused"', () => {
+    const [first, ...rest] = loadFixture() as Record<string, unknown>[];
+    const withPaused = {
+      ...first,
+      statusInfo: {
+        ...(first!["statusInfo"] as Record<string, unknown>),
+        marketStatus: "paused",
+      },
+    };
+    const parsed = tokensDataSchema.parse([withPaused, ...rest]);
+    expect(parsed[0]!.statusInfo.marketStatus).toBe("paused");
+  });
+
+  it('still parses "pause" (documented value, never observed live - kept, not removed)', () => {
+    expect(marketStatusSchema.parse("pause")).toBe("pause");
+  });
+});
+
+describe("tokenSchema marketCap (DEC-021: null confirmed live)", () => {
+  it("accepts a token with null marketCap", () => {
+    const [first, ...rest] = loadFixture() as Record<string, unknown>[];
+    const withNullMarketCap = { ...first, marketCap: null };
+    const parsed = tokensDataSchema.parse([withNullMarketCap, ...rest]);
+    expect(parsed[0]!.marketCap).toBeNull();
+  });
 });
 
 describe("tokenSchema (DEC-020: null assetType / underlyingName)", () => {

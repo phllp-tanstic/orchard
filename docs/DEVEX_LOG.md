@@ -98,3 +98,39 @@ Was docs behavior accurate?: No - underlyingName is documented as a string, not 
 Suggested fix: -
 Evidence ref: evidence.provider_call.id = 7f22e069-4cb0-47ae-b09b-a8e41cba0381, probe_run_id = e2e78fa9-6ff2-4daa-877b-592439128c5e
 ```
+
+### 2026-09-28 (DEC-021 - comprehensive audit of all stored /rwa/tokens responses)
+
+```text
+Timestamp: 2026-09-28T00:13:06.462Z
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/rwa-data (Get RWA Token List, statusInfo.marketStatus)
+Operation: GET /api/v1/dex/market/rwa/tokens (binanceChainId=56, platformId=ondo)
+Goal: -
+Expected: statusInfo.marketStatus one of the documented enum values (premarket | regular | postmarket | overnight | offhours | closed | pause)
+Observed: statusInfo.marketStatus = "paused" on 92 of the tokens in this response (e.g. tokenContractAddress 0x47b36ddb9dd12a8411f78226f55e8c3f0d65481f). Also observed in this same audit: across all 976 tokens captured so far (both probe runs, both platforms), the documented value "pause" (singular) has never once appeared - only "paused".
+HTTP/provider code: 200 / "0"
+Latency: 1384ms
+Workaround: -
+Was docs behavior accurate?: No - "paused" is not in the documented marketStatus enum; the closest documented value, "pause", has zero live occurrences across every stored response.
+Suggested fix: -
+Evidence ref: evidence.provider_call.id = f4192f57-f42d-461e-9706-283e30729d8d, probe_run_id = 3ffea1da-004d-4a2d-b0ec-1639aceee3f5
+```
+
+```text
+Timestamp: 2026-09-27T00:15:12.085Z
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/rwa-data (Get RWA Token List, marketCap)
+Operation: GET /api/v1/dex/market/rwa/tokens (binanceChainId=56, platformId=bstock)
+Goal: -
+Expected: marketCap a non-null string
+Observed: marketCap = null on at least one token in this response (tokenContractAddress 0x0bb3fa77e0809f42948e435f04883c25415e8263)
+HTTP/provider code: 200 / "0"
+Latency: 561ms
+Workaround: -
+Was docs behavior accurate?: No - marketCap is documented as a string, not nullable.
+Suggested fix: -
+Evidence ref: evidence.provider_call.id = cbf81217-d651-4e5f-83c2-14b88c472b7f, probe_run_id = e2e78fa9-6ff2-4daa-877b-592439128c5e
+```
