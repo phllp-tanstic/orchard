@@ -18,6 +18,7 @@ import {
   summarizeBps,
   classifyReferencePrice,
   ASSET_TYPE_LABEL,
+  isDocumentedMarketStatus,
   PRICE_BATCH_MAX,
   type Platform,
   type PriceQuote,
@@ -308,6 +309,8 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
 
   const assetTypeBreakdown: Record<string, number> = {};
   const marketStatusBreakdown: Record<string, number> = {};
+  // DEC-025: informational only - never pushed into `reasons`.
+  const undocumentedMarketStatuses: Record<string, number> = {};
   for (const rep of representations) {
     const label = ASSET_TYPE_LABEL[rep.assetType];
     assetTypeBreakdown[label] = (assetTypeBreakdown[label] ?? 0) + 1;
@@ -315,6 +318,10 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
     // rather than relying on JS's implicit null->"null" object-key coercion.
     const statusKey = rep.marketStatus ?? "null";
     marketStatusBreakdown[statusKey] = (marketStatusBreakdown[statusKey] ?? 0) + 1;
+    if (rep.marketStatus !== null && !isDocumentedMarketStatus(rep.marketStatus)) {
+      undocumentedMarketStatuses[rep.marketStatus] =
+        (undocumentedMarketStatuses[rep.marketStatus] ?? 0) + 1;
+    }
   }
 
   const overlapMatrix = [...groups.values()].map((g) => ({
@@ -343,6 +350,7 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
     reconciliation,
     assetTypeBreakdown,
     marketStatusBreakdown,
+    undocumentedMarketStatuses,
     overlapMatrix,
     ratioAnomalies,
     invalidRatios,
@@ -381,6 +389,7 @@ function emptyReport(
     reconciliation: [],
     assetTypeBreakdown: {},
     marketStatusBreakdown: {},
+    undocumentedMarketStatuses: {},
     overlapMatrix: [],
     ratioAnomalies: [],
     invalidRatios: [],

@@ -473,6 +473,57 @@ describe("runRwaUniverseProbe - null statusInfo.marketStatus (DEC-020)", () => {
   });
 });
 
+describe("runRwaUniverseProbe - marketStatus outside the documented list (DEC-025)", () => {
+  async function runWith(ondoStatus: string | null, bstockStatus: string | null) {
+    const now = Date.UTC(2026, 8, 21, 12, 0, 0);
+    const ondo = ondoToken({
+      underlyingTicker: "SOLO",
+      statusInfo: { ...ondoToken()["statusInfo"], marketStatus: ondoStatus },
+    });
+    const bstock = bstockToken({
+      statusInfo: { ...bstockToken()["statusInfo"], marketStatus: bstockStatus },
+    });
+    const client: RequestClient = {
+      request: <T>(spec: RequestSpec) => {
+        if (spec.path === "/api/v1/dex/market/rwa/platforms") {
+          return Promise.resolve({ data: PLATFORMS_FIXTURE as T });
+        }
+        if (spec.path === "/api/v1/dex/market/rwa/tokens") {
+          const platformId = spec.query?.["platformId"];
+          const data = platformId === "ondo" ? [ondo] : [bstock];
+          return Promise.resolve({ data: data as T });
+        }
+        return Promise.resolve({ data: [] as T });
+      },
+    };
+    return runRwaUniverseProbe({
+      client,
+      evidence: fakeEvidence(),
+      gitSha: "test-sha",
+      clientVersion: "0.0.0-test",
+      targetChainId: "56",
+      now: () => new Date(now),
+    });
+  }
+
+  it('parses and reports an unmodeled value like "halted" without failing the run', async () => {
+    const result = await runWith("halted", "regular");
+
+    expect(result.status).toBe("COMPLETE");
+    expect(result.incompleteReasons).toEqual([]);
+    expect(result.report.totalRepresentations).toBe(2);
+    expect(result.report.marketStatusBreakdown["halted"]).toBe(1);
+    expect(result.report.undocumentedMarketStatuses).toEqual({ halted: 1 });
+  });
+
+  it("does not flag null or documented values as outside the documented list", async () => {
+    const result = await runWith(null, "paused");
+
+    expect(result.status).toBe("COMPLETE");
+    expect(result.report.undocumentedMarketStatuses).toEqual({});
+  });
+});
+
 describe("runRwaUniverseProbe - incomplete token records (DEC-020)", () => {
   it("excludes a token with null assetType from grouping and lists it, while the run stays COMPLETE", async () => {
     const now = Date.UTC(2026, 8, 21, 12, 0, 0);

@@ -20,7 +20,19 @@ export const ASSET_TYPE_LABEL: Record<AssetType, string> = {
   3: "ETF",
 };
 
-export const marketStatusSchema = z.enum([
+/**
+ * DEC-025: marketStatus values confirmed so far. Reference only - NOT a
+ * validation gate. The provider has returned values outside the documented
+ * set more than once (DEC-019 "offhours", DEC-021 "paused"), so the schema
+ * accepts any string and the probe reports values outside this list rather
+ * than failing the run.
+ *
+ * "paused": confirmed live (ondo, chain 56, probe_run
+ * 3ffea1da-004d-4a2d-b0ec-1639aceee3f5) - see docs/DEVEX_LOG.md. "pause" is
+ * documented but has never been observed live (976 tokens audited under
+ * DEC-021); kept for reference.
+ */
+export const DOCUMENTED_MARKET_STATUSES: readonly string[] = [
   "premarket",
   "regular",
   "postmarket",
@@ -28,14 +40,15 @@ export const marketStatusSchema = z.enum([
   "offhours",
   "closed",
   "pause",
-  // DEC-021: confirmed live (ondo, chain 56, probe_run
-  // 3ffea1da-004d-4a2d-b0ec-1639aceee3f5) - see docs/DEVEX_LOG.md. "pause"
-  // above has never actually been observed live across either probe run
-  // captured so far (976 tokens audited); it was only ever a documented
-  // guess. Left in place since widening never removes prior acceptance -
-  // see DEC-021's audit table for the full comparison.
   "paused",
-]);
+];
+
+export function isDocumentedMarketStatus(value: string): boolean {
+  return DOCUMENTED_MARKET_STATUSES.includes(value);
+}
+
+// DEC-025: open string, not an enum - see DOCUMENTED_MARKET_STATUSES.
+export const marketStatusSchema = z.string();
 
 export const statusInfoSchema = z
   .object({

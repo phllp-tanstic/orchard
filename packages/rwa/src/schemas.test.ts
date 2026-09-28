@@ -4,6 +4,8 @@ import { join, dirname } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 import {
+  DOCUMENTED_MARKET_STATUSES,
+  isDocumentedMarketStatus,
   marketStatusSchema,
   tokenSchema,
   tokensDataSchema,
@@ -132,6 +134,52 @@ describe("marketStatusSchema", () => {
 
   it('still parses "pause" (documented value, never observed live - kept, not removed)', () => {
     expect(marketStatusSchema.parse("pause")).toBe("pause");
+  });
+
+  it('parses an unmodeled value like "halted" (DEC-025: open string, not an enum)', () => {
+    expect(marketStatusSchema.parse("halted")).toBe("halted");
+  });
+
+  it('accepts a token whose statusInfo.marketStatus is "halted"', () => {
+    const [first, ...rest] = loadFixture() as Record<string, unknown>[];
+    const withHalted = {
+      ...first,
+      statusInfo: {
+        ...(first!["statusInfo"] as Record<string, unknown>),
+        marketStatus: "halted",
+      },
+    };
+    const parsed = tokensDataSchema.parse([withHalted, ...rest]);
+    expect(parsed[0]!.statusInfo.marketStatus).toBe("halted");
+  });
+
+  it("still rejects a non-string, non-null marketStatus", () => {
+    expect(() => marketStatusSchema.nullable().parse(3)).toThrow(ZodError);
+  });
+});
+
+describe("DOCUMENTED_MARKET_STATUSES (DEC-025: reference only)", () => {
+  it("keeps every previously-confirmed value", () => {
+    expect([...DOCUMENTED_MARKET_STATUSES].sort()).toEqual([
+      "closed",
+      "offhours",
+      "overnight",
+      "pause",
+      "paused",
+      "postmarket",
+      "premarket",
+      "regular",
+    ]);
+  });
+
+  it("never flags a documented value as unknown", () => {
+    for (const value of DOCUMENTED_MARKET_STATUSES) {
+      expect(isDocumentedMarketStatus(value)).toBe(true);
+    }
+  });
+
+  it('flags an unmodeled value like "halted" as outside the documented list', () => {
+    expect(isDocumentedMarketStatus("halted")).toBe(false);
   });
 });
 

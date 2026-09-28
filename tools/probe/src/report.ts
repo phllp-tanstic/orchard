@@ -69,6 +69,8 @@ export interface RwaUniverseReport {
   reconciliation: ReconciliationEntry[];
   assetTypeBreakdown: Record<string, number>;
   marketStatusBreakdown: Record<string, number>;
+  /** DEC-025: count per marketStatus value outside DOCUMENTED_MARKET_STATUSES. Informational; never affects status. */
+  undocumentedMarketStatuses: Record<string, number>;
   overlapMatrix: OverlapEntry[];
   ratioAnomalies: RatioAnomaly[];
   invalidRatios: InvalidRatioEntry[];
@@ -127,6 +129,15 @@ export function renderMarkdown(report: RwaUniverseReport): string {
   lines.push(`## Market status breakdown`);
   for (const [status, count] of Object.entries(report.marketStatusBreakdown)) {
     lines.push(`- ${status}: ${count}`);
+  }
+  lines.push("");
+
+  lines.push(`## marketStatus values outside the documented list`);
+  const undocumented = Object.entries(report.undocumentedMarketStatuses);
+  if (undocumented.length === 0) {
+    lines.push(`- none`);
+  } else {
+    for (const [status, count] of undocumented) lines.push(`- ${status}: ${count}`);
   }
   lines.push("");
 
