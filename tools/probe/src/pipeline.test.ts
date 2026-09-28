@@ -264,8 +264,8 @@ describe("runRwaUniverseProbe - invalid tokenToShareRatio", () => {
   );
 });
 
-describe("runRwaUniverseProbe - reconciliation", () => {
-  it("flags a reconciliation mismatch and marks the run INCOMPLETE (universe untrusted)", async () => {
+describe("runRwaUniverseProbe - reconciliation (DEC-023: informational only)", () => {
+  it("reports a reconciliation mismatch but never uses it to mark the run INCOMPLETE", async () => {
     const now = Date.UTC(2026, 8, 21, 12, 0, 0);
     const client: RequestClient = {
       request: <T>(spec: RequestSpec) => {
@@ -291,9 +291,16 @@ describe("runRwaUniverseProbe - reconciliation", () => {
       now: () => new Date(now),
     });
 
-    expect(result.status).toBe("INCOMPLETE");
-    expect(result.report.reconciliation.find((r) => r.platformId === "ondo")?.ok).toBe(false);
-    expect(result.incompleteReasons.some((r) => r.includes("reconciliation mismatch"))).toBe(true);
+    // The mismatch is still reported, side by side, for the owner to read -
+    // it just no longer drives the run's status (DEC-023).
+    const ondoReconciliation = result.report.reconciliation.find((r) => r.platformId === "ondo");
+    expect(ondoReconciliation).toMatchObject({
+      reportedTokenCount: 1,
+      actualTokenCount: 0,
+      ok: false,
+    });
+    expect(result.status).toBe("COMPLETE");
+    expect(result.incompleteReasons.some((r) => r.includes("reconciliation mismatch"))).toBe(false);
   });
 });
 
