@@ -274,3 +274,89 @@ Was docs behavior accurate?: No - see above.
 Suggested fix: implemented (this commit).
 Evidence ref: probe_run_id = 300b6de4-229b-4859-a689-789c5f49e811 (5 provider_call rows, endpoint LIKE '%/rwa/price%')
 ```
+
+### 2026-09-28 (referencePrice bps outliers - ASSESS only, no decision number assigned)
+
+```text
+Timestamp: 2026-09-28T22:51:09.210Z (tokens list) / 2026-09-28T22:51:50.340Z (price)
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/rwa-data (Get RWA Token List; Get RWA Token Price)
+Operation: stored responses for ondo 0xfc263946439b0d802bf4c5a6fcd34e2885259f91 (KLAC), read back from evidence.provider_call
+Goal: -
+Expected: -
+Observed: raw field values exactly as received. /rwa/tokens entry: decimals "18", tokenToShareRatio "10.026064925604903975", tokenPrice "19031.667350173495423663139671929525", referencePrice "1898.219041208259". /rwa/price entry: tokenPrice "1898.219041208258939443", referencePrice "189.328421", tokenPriceUpdatedAt 1790635909400 (2026-09-28T22:51:49.400Z, 0.94s before the price call). Derived from those raw values: price.tokenPrice / price.referencePrice = 10.0260649256 = tokenToShareRatio; list.tokenPrice / list.referencePrice = 10.0260649256 = tokenToShareRatio; bps(price.referencePrice vs price.tokenPrice) = -9002.5997.
+HTTP/provider code: 200 / "0"
+Latency: -
+Workaround: -
+Was docs behavior accurate?: Unclear - neither endpoint's doc page states the unit (per token vs per underlying share) of tokenPrice or referencePrice.
+Suggested fix: -
+Evidence ref: evidence.provider_call.id = 9709995e-febc-46d2-b7ae-6b0274ea5c56 (tokens list), 2ea05d39-e84c-45a5-9248-6ed032400459 (price), probe_run_id = 634f558e-d77d-42eb-aed3-b5e33ca84f1b
+```
+
+```text
+Timestamp: 2026-09-28T22:51:09.210Z (tokens list) / 2026-09-28T22:51:52.734Z (price)
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/rwa-data (Get RWA Token List; Get RWA Token Price)
+Operation: stored responses for ondo 0x5a9d924fc336a5ec8cf3b1909aa660533b50b015 (ENLV), read back from evidence.provider_call
+Goal: -
+Expected: -
+Observed: raw field values exactly as received. /rwa/tokens entry: decimals "18", tokenToShareRatio "0.066667", tokenPrice "0.002318440962013516", referencePrice "0.034776440548". /rwa/price entry: tokenPrice "0.034776440548", referencePrice "0.521644", tokenPriceUpdatedAt 1790635907235 (2026-09-28T22:51:47.235Z, 5.5s before the price call). Derived from those raw values: price.tokenPrice / price.referencePrice = 0.066667 = tokenToShareRatio; list.tokenPrice / list.referencePrice = 0.066667 = tokenToShareRatio; list.referencePrice equals price.tokenPrice exactly; bps(price.referencePrice vs price.tokenPrice) = +139999.25.
+HTTP/provider code: 200 / "0"
+Latency: -
+Workaround: -
+Was docs behavior accurate?: Unclear - see the KLAC entry above; same unit question.
+Suggested fix: -
+Evidence ref: evidence.provider_call.id = 9709995e-febc-46d2-b7ae-6b0274ea5c56 (tokens list), d45f19b5-2f8f-41dc-826b-424bc6b2143b (price), probe_run_id = 634f558e-d77d-42eb-aed3-b5e33ca84f1b
+```
+
+```text
+Timestamp: 2026-09-28T22:58:21.231Z to 22:58:21.830Z
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/rwa-data (Get RWA Underlying Profile, tokenToShareRatio)
+Operation: GET /api/v1/dex/market/rwa/underlying-profile?binanceChainId=56&tokenContractAddress=<KLAC, then ENLV> (2 live calls)
+Goal: -
+Expected: -
+Observed: profile tokenToShareRatio = "10.026064925604903975" for KLAC and "0.066667" for ENLV - byte-identical to each token's /rwa/tokens tokenToShareRatio, and equal under decimal comparison. No ratio disagreement between the two endpoints for either token.
+HTTP/provider code: 200 / "0" (both)
+Latency: 1261ms, 600ms
+Workaround: -
+Was docs behavior accurate?: Yes - the profile ratio matched the list ratio, as documented.
+Evidence ref: evidence.provider_call.id = e708c370-65cf-4d28-8505-13f27457e252 (KLAC), 5760e0f5-72bc-4138-8412-dd08e7a478a5 (ENLV), probe_run_id = 5f48bfac-3139-48ae-8dd6-cef943648441
+```
+
+```text
+Timestamp: 2026-09-28T22:51:09.210Z to 22:51:53Z (all stored tokens/price responses in the run)
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/rwa-data (Get RWA Token List; Get RWA Token Price)
+Operation: read-only sweep over evidence.provider_call for probe_run_id 634f558e, 485 tokens holding both a /rwa/tokens entry and a /rwa/price entry (229 with tokenToShareRatio = 1, 256 with ratio != 1)
+Goal: -
+Expected: -
+Observed: three relations tested to 9 significant digits. (A) price.tokenPrice / price.referencePrice == tokenToShareRatio: holds for 479 of 485; the 6 exceptions (NVDA 0x02fca66c, GOOGL 0x3f53de71, TQQQ 0x462b5f13, NOK 0x7c4d7a18, MUU 0x0bb3fa77, QCOM 0x5f7a56e8) agree to 9 significant digits and diverge only at the 10th, all with a price.referencePrice rounded to 6 decimals. (B) list.tokenPrice / list.referencePrice == tokenToShareRatio: holds for all 485, no exceptions. (C) list.referencePrice vs price.tokenPrice: median absolute difference 1.7e-13 bps, p90 1.21 bps, p99 20.0 bps, max 73.3 bps, none above 100 bps, across a 41-second gap between the two calls.
+HTTP/provider code: 200 / "0" (all source calls)
+Latency: -
+Workaround: -
+Was docs behavior accurate?: Unclear - the relations hold empirically; no doc page states them.
+Suggested fix: -
+Evidence ref: probe_run_id = 634f558e-d77d-42eb-aed3-b5e33ca84f1b (all /rwa/tokens and /rwa/price rows)
+```
+
+```text
+Timestamp: 2026-09-28T22:51:09.210Z to 22:51:48Z (profile-call phase of the run)
+Author: Claude (agent)
+Developer: -
+Docs URL/page: - (observation about this repository's probe, not the provider)
+Operation: counted /rwa/underlying-profile calls in probe_run_id 634f558e against the representation count per underlyingTicker in the same run
+Goal: -
+Expected: -
+Observed: the run made 80 /rwa/underlying-profile calls and 0 of them were for KLAC 0xfc263946 or ENLV 0x5a9d924f. Of 448 distinct underlyingTicker values in the run, 40 have more than one representation; KLAC and ENLV have exactly one each (both ondo-only). tools/probe/src/pipeline.ts iterates the profile/ratio cross-check over multiRepTickers only, so 408 of 448 tickers received no profile call and no list-vs-profile ratio comparison in this run.
+HTTP/provider code: - (counts over stored rows)
+Latency: -
+Workaround: -
+Was docs behavior accurate?: - (not a provider-docs observation)
+Suggested fix: -
+Evidence ref: probe_run_id = 634f558e-d77d-42eb-aed3-b5e33ca84f1b (80 rows with endpoint LIKE '%/rwa/underlying-profile%')
+```
