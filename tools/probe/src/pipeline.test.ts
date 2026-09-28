@@ -719,3 +719,68 @@ describe("runRwaUniverseProbe - /rwa/price batch size (DEC-024)", () => {
     expect(priceRequestSizes).toEqual([1, 1]);
   });
 });
+
+describe("runRwaUniverseProbe - bps extreme attribution", () => {
+  /** ondo sits above its tokenPrice, bstock below it, so each end of the range has one owner. */
+  function skewedClient(now: number): RequestClient {
+    const ondo = ondoToken({ tokenPrice: "100.00", referencePrice: "100.50" });
+    const bstock = bstockToken({ tokenPrice: "10.00", referencePrice: "9.98" });
+    return {
+      request: <T>(spec: RequestSpec) => {
+        if (spec.path === "/api/v1/dex/market/rwa/platforms") {
+          return Promise.resolve({ data: PLATFORMS_FIXTURE as T });
+        }
+        if (spec.path === "/api/v1/dex/market/rwa/tokens") {
+          const platformId = spec.query?.["platformId"];
+          const data = platformId === "ondo" ? [ondo] : platformId === "bstock" ? [bstock] : [];
+          return Promise.resolve({ data: data as T });
+        }
+        if (spec.path === "/api/v1/dex/market/rwa/underlying-profile") {
+          const address = spec.query?.["tokenContractAddress"];
+          const token = address === ondo.tokenContractAddress ? ondo : bstock;
+          return Promise.resolve({ data: profileFor(token) as T });
+        }
+        if (spec.path === "/api/v1/dex/market/rwa/price") {
+          const addresses = String(spec.query?.["tokenContractAddresses"]).split(",");
+          const data = [ondo, bstock]
+            .filter((t) => addresses.includes(t.tokenContractAddress))
+            .map((t) => priceFor(t, now));
+          return Promise.resolve({ data: data as T });
+        }
+        throw new Error(`unexpected request in test: ${spec.method} ${spec.path}`);
+      },
+    };
+  }
+
+  it("names the token behind the max and min bps deviation in both comparisons", async () => {
+    const now = Date.UTC(2026, 8, 21, 12, 0, 0);
+    const result = await runRwaUniverseProbe({
+      client: skewedClient(now),
+      evidence: fakeEvidence(),
+      gitSha: "test-sha",
+      clientVersion: "0.0.0-test",
+      targetChainId: "56",
+      now: () => new Date(now),
+    });
+
+    const { vsTokenPriceBps, vsImpliedPricePerShareBps } = result.report.referencePriceAnalysis;
+
+    // referencePrice 100.50 against tokenPrice 100.00 is +50 bps; 9.98 against 10.00 is -20 bps.
+    expect(vsTokenPriceBps.max).toBe("50");
+    expect(vsTokenPriceBps.maxToken).toEqual({
+      tokenContractAddress: ondoToken().tokenContractAddress,
+      platformId: "ondo",
+      underlyingTicker: "EXA",
+    });
+    expect(vsTokenPriceBps.min).toBe("-20");
+    expect(vsTokenPriceBps.minToken).toEqual({
+      tokenContractAddress: bstockToken().tokenContractAddress,
+      platformId: "bstock",
+      underlyingTicker: "EXA",
+    });
+
+    // bstock's 0.1 ratio implies 100 per share, so 9.98 is far below it.
+    expect(vsImpliedPricePerShareBps.maxToken?.platformId).toBe("ondo");
+    expect(vsImpliedPricePerShareBps.minToken?.platformId).toBe("bstock");
+  });
+});

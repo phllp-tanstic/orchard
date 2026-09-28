@@ -35,8 +35,22 @@ function baseReport(overrides: Partial<RwaUniverseReport> = {}): RwaUniverseRepo
       },
     ],
     referencePriceAnalysis: {
-      vsTokenPriceBps: { sampleSize: 2, min: "0", max: "1", medianAbs: "0.5" },
-      vsImpliedPricePerShareBps: { sampleSize: 2, min: "0", max: "1", medianAbs: "0.5" },
+      vsTokenPriceBps: {
+        sampleSize: 2,
+        min: "0",
+        max: "1",
+        medianAbs: "0.5",
+        minToken: { tokenContractAddress: "0xabc", platformId: "ondo", underlyingTicker: "AAPL" },
+        maxToken: { tokenContractAddress: "0xdef", platformId: "bstock", underlyingTicker: "TSLA" },
+      },
+      vsImpliedPricePerShareBps: {
+        sampleSize: 2,
+        min: "0",
+        max: "1",
+        medianAbs: "0.5",
+        minToken: { tokenContractAddress: "0xabc", platformId: "ondo", underlyingTicker: "AAPL" },
+        maxToken: { tokenContractAddress: "0xdef", platformId: "bstock", underlyingTicker: "TSLA" },
+      },
       verdict: "derived-from-tokenPrice",
     },
     unknownFields: {},
@@ -68,6 +82,43 @@ describe("renderMarkdown", () => {
     const md = renderMarkdown(baseReport({ status: "FAILED", incompleteReasons: ["boom"] }));
     expect(md).toContain("Status: **FAILED**");
     expect(md).not.toContain("Status: **COMPLETE**");
+  });
+
+  it("names the token at each end of both bps ranges, alongside the range itself", () => {
+    const md = renderMarkdown(baseReport());
+    expect(md).toContain("- vs tokenPrice (bps): n=2, medianAbs=0.5, range=[0, 1]");
+    expect(md).toContain("  - min 0: ondo 0xabc (AAPL)");
+    expect(md).toContain("  - max 1: bstock 0xdef (TSLA)");
+    expect(md).toContain("- vs impliedPricePerShare (bps): n=2, medianAbs=0.5, range=[0, 1]");
+  });
+
+  it("renders n/a for both extremes when a bps summary has no samples", () => {
+    const md = renderMarkdown(
+      baseReport({
+        referencePriceAnalysis: {
+          vsTokenPriceBps: {
+            sampleSize: 0,
+            min: undefined,
+            max: undefined,
+            medianAbs: undefined,
+            minToken: undefined,
+            maxToken: undefined,
+          },
+          vsImpliedPricePerShareBps: {
+            sampleSize: 0,
+            min: undefined,
+            max: undefined,
+            medianAbs: undefined,
+            minToken: undefined,
+            maxToken: undefined,
+          },
+          verdict: "inconclusive",
+        },
+      }),
+    );
+    expect(md).toContain("- vs tokenPrice (bps): n=0, medianAbs=n/a, range=[n/a, n/a]");
+    expect(md).toContain("  - min n/a: n/a");
+    expect(md).toContain("  - max n/a: n/a");
   });
 
   it("renders marketStatus values outside the documented list with counts (DEC-025)", () => {

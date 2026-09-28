@@ -1,30 +1,58 @@
 import { Decimal } from "decimal.js";
 
+/** Identifies the single representation a bps extreme belongs to. */
+export interface BpsTokenRef {
+  tokenContractAddress: string;
+  platformId: string;
+  underlyingTicker: string;
+}
+
+/** One bps observation together with the representation it was computed from. */
+export interface BpsSample {
+  value: Decimal;
+  token: BpsTokenRef;
+}
+
 export interface BpsSummary {
   sampleSize: number;
   min: string | undefined;
   max: string | undefined;
   medianAbs: string | undefined;
+  /** The representation `min` belongs to. A tied minimum resolves to the first such sample in input order. */
+  minToken: BpsTokenRef | undefined;
+  /** The representation `max` belongs to. A tied maximum resolves to the last such sample in input order. */
+  maxToken: BpsTokenRef | undefined;
 }
 
-export function summarizeBps(values: readonly Decimal[]): BpsSummary {
-  if (values.length === 0) {
-    return { sampleSize: 0, min: undefined, max: undefined, medianAbs: undefined };
+export function summarizeBps(samples: readonly BpsSample[]): BpsSummary {
+  if (samples.length === 0) {
+    return {
+      sampleSize: 0,
+      min: undefined,
+      max: undefined,
+      medianAbs: undefined,
+      minToken: undefined,
+      maxToken: undefined,
+    };
   }
-  const sorted = [...values].sort((a, b) => a.comparedTo(b));
+  // Array.prototype.sort is stable, so equal values keep their input order:
+  // a tied min resolves to the first such sample, a tied max to the last.
+  const sorted = [...samples].sort((a, b) => a.value.comparedTo(b.value));
   const min = sorted[0]!;
   const max = sorted[sorted.length - 1]!;
-  const absSorted = values.map((v) => v.abs()).sort((a, b) => a.comparedTo(b));
+  const absSorted = samples.map((s) => s.value.abs()).sort((a, b) => a.comparedTo(b));
   const mid = Math.floor(absSorted.length / 2);
   const medianAbs =
     absSorted.length % 2 === 1
       ? absSorted[mid]!
       : absSorted[mid - 1]!.plus(absSorted[mid]!).dividedBy(2);
   return {
-    sampleSize: values.length,
-    min: min.toString(),
-    max: max.toString(),
+    sampleSize: samples.length,
+    min: min.value.toString(),
+    max: max.value.toString(),
     medianAbs: medianAbs.toString(),
+    minToken: min.token,
+    maxToken: max.token,
   };
 }
 
