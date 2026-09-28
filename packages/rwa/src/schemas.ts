@@ -28,6 +28,13 @@ export const marketStatusSchema = z.enum([
   "offhours",
   "closed",
   "pause",
+  // DEC-021: confirmed live (ondo, chain 56, probe_run
+  // 3ffea1da-004d-4a2d-b0ec-1639aceee3f5) - see docs/DEVEX_LOG.md. "pause"
+  // above has never actually been observed live across either probe run
+  // captured so far (976 tokens audited); it was only ever a documented
+  // guess. Left in place since widening never removes prior acceptance -
+  // see DEC-021's audit table for the full comparison.
+  "paused",
 ]);
 
 export const statusInfoSchema = z
@@ -91,7 +98,11 @@ export const tokenSchema = z
     tokenPrice: z.string(),
     referencePrice: z.string(),
     volume24H: z.string(),
-    marketCap: z.string(),
+    // DEC-021: confirmed live null on the tokens endpoint (bstock, chain 56,
+    // probe_run cbf81217-d651-4e5f-83c2-14b88c472b7f) - see docs/DEVEX_LOG.md.
+    // Not a grouping/typing key (unlike assetType/underlyingName), so no
+    // exclusion needed - passed through as-is.
+    marketCap: z.string().nullable(),
     peRatioTTM: z.string().nullable().optional(),
   })
   .passthrough();
