@@ -53,6 +53,15 @@ export interface EvidenceOps {
   }): Promise<void>;
 }
 
+// DEC-024: PRICE_BATCH_MAX (100) is /rwa/price's documented address-count
+// cap, but a 100-address batch's URL is long enough to hit the provider's
+// own request-URI-length limit (HTTP 414) every time - confirmed live via a
+// read-only sweep (20/40/60/80/100 addresses, chain 56): 80 succeeded, 100
+// failed with 414 on every attempt (see docs/DEVEX_LOG.md for evidence
+// refs). 80 is that measured safe size, not a documented value - callers
+// needing a different margin can override via RunProbeDeps.priceBatchSize.
+const DEFAULT_PRICE_BATCH_SIZE = 80;
+
 export interface RunProbeDeps {
   client: RequestClient;
   evidence: EvidenceOps;
@@ -60,6 +69,8 @@ export interface RunProbeDeps {
   clientVersion: string;
   targetChainId: string;
   now?: () => Date;
+  /** /rwa/price batch size (tokenContractAddresses count). Defaults to DEFAULT_PRICE_BATCH_SIZE; never exceeds PRICE_BATCH_MAX. */
+  priceBatchSize?: number;
 }
 
 export interface RunProbeResult {
@@ -233,10 +244,11 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
     byChain.set(rep.binanceChainId, list);
   }
 
+  const priceBatchSize = Math.min(deps.priceBatchSize ?? DEFAULT_PRICE_BATCH_SIZE, PRICE_BATCH_MAX);
   const priceByKey = new Map<string, PriceQuote>();
   for (const [chainId, reps] of byChain) {
-    for (let i = 0; i < reps.length; i += PRICE_BATCH_MAX) {
-      const batch = reps.slice(i, i + PRICE_BATCH_MAX);
+    for (let i = 0; i < reps.length; i += priceBatchSize) {
+      const batch = reps.slice(i, i + priceBatchSize);
       try {
         const raw = (
           await deps.client.request<unknown>({
@@ -250,7 +262,7 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
         ).data;
         const prices = pricesDataSchema.parse(raw);
         const extra = unknownArrayItemKeys(priceSchema.shape, raw as Record<string, unknown>[]);
-        if (extra.length) unknownFields[`price:${chainId}:${i / PRICE_BATCH_MAX}`] = extra;
+        if (extra.length) unknownFields[`price:${chainId}:${i / priceBatchSize}`] = extra;
         for (const p of prices) priceByKey.set(`${p.binanceChainId}:${p.tokenContractAddress}`, p);
       } catch (err) {
         reasons.push(
