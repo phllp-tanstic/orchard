@@ -1,0 +1,4 @@
+# Normalize line endings to LF in the repository and in every working tree.
+# On Windows with core.autocrlf=true, git otherwise reports ~70 tracked files as
+# modified while their content is byte-identical (git diff is empty).
+* text=auto eol=lf
