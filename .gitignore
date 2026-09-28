@@ -20,3 +20,6 @@ reports/
 
 # raw provider evidence stays local; only evidence/manifest.jsonl is committed
 evidence/raw/
+
+# one-off investigation/assessment scripts, never committed
+scripts/scratch/
