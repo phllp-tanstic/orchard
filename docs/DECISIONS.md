@@ -178,6 +178,66 @@ Status vocabulary for decisions: `APPROVED`, `OPEN`.
   service container using the same env vars CI already sets
   (`DATABASE_URL`, `ORCHARD_APP_DATABASE_URL`, `POSTGRES_DB`).
 
+### DEC-019
+
+- **Status:** APPROVED
+- **Date:** 2026-09-28
+- **Decision:** Widen `marketStatus` to accept `"offhours"`. Reason: the provider returned a
+  value outside the documented enum, failing an otherwise-good probe run.
+- **Merged:** `ce5642d` (PR #2).
+
+### DEC-020
+
+- **Status:** APPROVED
+- **Date:** 2026-09-28
+- **Decision:** Widen `assetType`, `underlyingName`, and `marketStatus` to accept `null`.
+  Reason: all three came back null on live bstock rows; the docs do not mark them nullable.
+- **Merged:** `49b0f42` (PR #3).
+
+### DEC-021
+
+- **Status:** APPROVED
+- **Date:** 2026-09-28
+- **Decision:** Comprehensive audit of every stored `/rwa/tokens` response; widen `paused` and
+  `marketCap`. Reason: field-by-field audit beats widening one field per incident.
+- **Merged:** `99877cd` (PR #4).
+
+### DEC-022
+
+- **Status:** APPROVED
+- **Date:** 2026-09-28
+- **Decision:** Bounded, read-only investigation of the platforms/tokens count mismatch
+  (`/rwa/search` surfaces addresses absent from `/rwa/tokens`). Reason: establish the cause
+  before changing any runtime path; outcome was partially explained, not resolved.
+- **Merged:** `a51ffc7` (PR #6).
+
+### DEC-023
+
+- **Status:** APPROVED
+- **Date:** 2026-09-28
+- **Decision:** Platforms/tokens reconciliation is informational only and never gates run
+  status. Reason: a provider-side inventory gap (DEC-022) is not a probe failure.
+- **Merged:** `a393bf3` (PR #7).
+
+### DEC-024
+
+- **Status:** APPROVED
+- **Date:** 2026-09-28
+- **Decision:** `/rwa/price` batching defaults to 80 addresses, not the documented
+  `PRICE_BATCH_MAX` of 100. Reason: 100-address batches return HTTP 414 against the
+  provider's undocumented URL-length limit; 80 is the largest size verified to succeed.
+- **Merged:** `2081f08` (PR #8).
+
+### DEC-025
+
+- **Status:** APPROVED
+- **Date:** 2026-09-28
+- **Decision:** `statusInfo.marketStatus` is an open string, not an enum; previously-confirmed
+  values become reference-only `DOCUMENTED_MARKET_STATUSES` and the probe report counts
+  undocumented values informationally. Reason: widening the enum per new value (DEC-019
+  `"offhours"`, DEC-021 `"paused"`) turns each one into a failed probe run.
+- **Merged:** not yet - branch `fix/dec-022-marketstatus-open-string`.
+
 ## Open
 
 ### DEC-003
