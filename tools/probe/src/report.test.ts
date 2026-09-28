@@ -21,6 +21,7 @@ function baseReport(overrides: Partial<RwaUniverseReport> = {}): RwaUniverseRepo
     ],
     assetTypeBreakdown: { Stock: 2 },
     marketStatusBreakdown: { regular: 2 },
+    undocumentedMarketStatuses: {},
     overlapMatrix: [{ underlyingTicker: "EXA", platformIds: ["bstock", "ondo"] }],
     ratioAnomalies: [],
     invalidRatios: [],
@@ -67,5 +68,18 @@ describe("renderMarkdown", () => {
     const md = renderMarkdown(baseReport({ status: "FAILED", incompleteReasons: ["boom"] }));
     expect(md).toContain("Status: **FAILED**");
     expect(md).not.toContain("Status: **COMPLETE**");
+  });
+
+  it("renders marketStatus values outside the documented list with counts (DEC-025)", () => {
+    const md = renderMarkdown(baseReport({ undocumentedMarketStatuses: { halted: 3 } }));
+    expect(md).toContain("## marketStatus values outside the documented list");
+    expect(md).toContain("- halted: 3");
+    expect(md).toContain("Status: **COMPLETE**");
+  });
+
+  it('renders "none" when every marketStatus is documented or null', () => {
+    const md = renderMarkdown(baseReport());
+    const section = md.split("## marketStatus values outside the documented list")[1]!;
+    expect(section.trimStart().startsWith("- none")).toBe(true);
   });
 });
