@@ -24,6 +24,7 @@ function baseReport(overrides: Partial<RwaUniverseReport> = {}): RwaUniverseRepo
     overlapMatrix: [{ underlyingTicker: "EXA", platformIds: ["bstock", "ondo"] }],
     ratioAnomalies: [],
     invalidRatios: [],
+    incompleteTokenRecords: [],
     staleness: [
       {
         binanceChainId: "56",

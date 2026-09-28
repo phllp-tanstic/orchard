@@ -95,4 +95,37 @@ describe("marketStatusSchema", () => {
     const parsed = tokensDataSchema.parse([withOffhours, ...rest]);
     expect(parsed[0]!.statusInfo.marketStatus).toBe("offhours");
   });
+
+  it("parses null (DEC-020: confirmed live - see docs/DEVEX_LOG.md)", () => {
+    expect(marketStatusSchema.nullable().parse(null)).toBeNull();
+  });
+
+  it("accepts a token whose statusInfo.marketStatus is null", () => {
+    const [first, ...rest] = loadFixture() as Record<string, unknown>[];
+    const withNullStatus = {
+      ...first,
+      statusInfo: {
+        ...(first!["statusInfo"] as Record<string, unknown>),
+        marketStatus: null,
+      },
+    };
+    const parsed = tokensDataSchema.parse([withNullStatus, ...rest]);
+    expect(parsed[0]!.statusInfo.marketStatus).toBeNull();
+  });
+});
+
+describe("tokenSchema (DEC-020: null assetType / underlyingName)", () => {
+  it("accepts a token with null assetType", () => {
+    const [first, ...rest] = loadFixture() as Record<string, unknown>[];
+    const withNullAssetType = { ...first, assetType: null };
+    const parsed = tokensDataSchema.parse([withNullAssetType, ...rest]);
+    expect(parsed[0]!.assetType).toBeNull();
+  });
+
+  it("accepts a token with null underlyingName", () => {
+    const [first, ...rest] = loadFixture() as Record<string, unknown>[];
+    const withNullUnderlyingName = { ...first, underlyingName: null };
+    const parsed = tokensDataSchema.parse([withNullUnderlyingName, ...rest]);
+    expect(parsed[0]!.underlyingName).toBeNull();
+  });
 });

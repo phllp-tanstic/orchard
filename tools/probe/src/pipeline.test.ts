@@ -428,3 +428,162 @@ describe("runRwaUniverseProbe - unknown field reporting", () => {
     expect(result.report.unknownFields["tokens:ondo"]).toEqual(["tokenIssuerNote"]);
   });
 });
+
+describe("runRwaUniverseProbe - null statusInfo.marketStatus (DEC-020)", () => {
+  it("includes a token whose marketStatus is null in the universe and keeps the run COMPLETE", async () => {
+    const now = Date.UTC(2026, 8, 21, 12, 0, 0);
+    const ondo = ondoToken({
+      underlyingTicker: "SOLO",
+      statusInfo: { ...ondoToken()["statusInfo"], marketStatus: null },
+    });
+    const client: RequestClient = {
+      request: <T>(spec: RequestSpec) => {
+        if (spec.path === "/api/v1/dex/market/rwa/platforms") {
+          return Promise.resolve({ data: PLATFORMS_FIXTURE as T });
+        }
+        if (spec.path === "/api/v1/dex/market/rwa/tokens") {
+          const platformId = spec.query?.["platformId"];
+          const data = platformId === "ondo" ? [ondo] : [bstockToken()];
+          return Promise.resolve({ data: data as T });
+        }
+        return Promise.resolve({ data: [] as T });
+      },
+    };
+
+    const result = await runRwaUniverseProbe({
+      client,
+      evidence: fakeEvidence(),
+      gitSha: "test-sha",
+      clientVersion: "0.0.0-test",
+      targetChainId: "56",
+      now: () => new Date(now),
+    });
+
+    expect(result.status).toBe("COMPLETE");
+    expect(result.report.totalRepresentations).toBe(2);
+    expect(result.report.marketStatusBreakdown["null"]).toBe(1);
+    expect(result.report.marketStatusBreakdown["regular"]).toBe(1);
+  });
+});
+
+describe("runRwaUniverseProbe - incomplete token records (DEC-020)", () => {
+  it("excludes a token with null assetType from grouping and lists it, while the run stays COMPLETE", async () => {
+    const now = Date.UTC(2026, 8, 21, 12, 0, 0);
+    const ondo = ondoToken({ assetType: null });
+    const bstock = bstockToken();
+    const client: RequestClient = {
+      request: <T>(spec: RequestSpec) => {
+        if (spec.path === "/api/v1/dex/market/rwa/platforms") {
+          return Promise.resolve({ data: PLATFORMS_FIXTURE as T });
+        }
+        if (spec.path === "/api/v1/dex/market/rwa/tokens") {
+          const platformId = spec.query?.["platformId"];
+          const data = platformId === "ondo" ? [ondo] : [bstock];
+          return Promise.resolve({ data: data as T });
+        }
+        return Promise.resolve({ data: [] as T });
+      },
+    };
+
+    const result = await runRwaUniverseProbe({
+      client,
+      evidence: fakeEvidence(),
+      gitSha: "test-sha",
+      clientVersion: "0.0.0-test",
+      targetChainId: "56",
+      now: () => new Date(now),
+    });
+
+    expect(result.status).toBe("COMPLETE");
+    expect(result.report.totalRepresentations).toBe(1);
+    expect(result.report.incompleteTokenRecords).toEqual([
+      {
+        platformId: "ondo",
+        tokenContractAddress: ondo.tokenContractAddress,
+        tokenSymbol: ondo.tokenSymbol,
+        nullFields: ["assetType"],
+      },
+    ]);
+    // Reconciliation counts every fetched token, not just the ones that made
+    // it into a representation - exclusion is an observation, not a
+    // fail-closed reconciliation mismatch.
+    expect(result.report.reconciliation.find((r) => r.platformId === "ondo")).toMatchObject({
+      reportedTokenCount: 1,
+      actualTokenCount: 1,
+      ok: true,
+    });
+  });
+
+  it("excludes a token with null underlyingName from grouping and lists it", async () => {
+    const now = Date.UTC(2026, 8, 21, 12, 0, 0);
+    const ondo = ondoToken({ underlyingName: null });
+    const bstock = bstockToken();
+    const client: RequestClient = {
+      request: <T>(spec: RequestSpec) => {
+        if (spec.path === "/api/v1/dex/market/rwa/platforms") {
+          return Promise.resolve({ data: PLATFORMS_FIXTURE as T });
+        }
+        if (spec.path === "/api/v1/dex/market/rwa/tokens") {
+          const platformId = spec.query?.["platformId"];
+          const data = platformId === "ondo" ? [ondo] : [bstock];
+          return Promise.resolve({ data: data as T });
+        }
+        return Promise.resolve({ data: [] as T });
+      },
+    };
+
+    const result = await runRwaUniverseProbe({
+      client,
+      evidence: fakeEvidence(),
+      gitSha: "test-sha",
+      clientVersion: "0.0.0-test",
+      targetChainId: "56",
+      now: () => new Date(now),
+    });
+
+    expect(result.status).toBe("COMPLETE");
+    expect(result.report.totalRepresentations).toBe(1);
+    expect(result.report.incompleteTokenRecords).toEqual([
+      {
+        platformId: "ondo",
+        tokenContractAddress: ondo.tokenContractAddress,
+        tokenSymbol: ondo.tokenSymbol,
+        nullFields: ["underlyingName"],
+      },
+    ]);
+  });
+
+  it("reports both null fields when a token has both assetType and underlyingName null", async () => {
+    const now = Date.UTC(2026, 8, 21, 12, 0, 0);
+    const ondo = ondoToken({ assetType: null, underlyingName: null });
+    const bstock = bstockToken();
+    const client: RequestClient = {
+      request: <T>(spec: RequestSpec) => {
+        if (spec.path === "/api/v1/dex/market/rwa/platforms") {
+          return Promise.resolve({ data: PLATFORMS_FIXTURE as T });
+        }
+        if (spec.path === "/api/v1/dex/market/rwa/tokens") {
+          const platformId = spec.query?.["platformId"];
+          const data = platformId === "ondo" ? [ondo] : [bstock];
+          return Promise.resolve({ data: data as T });
+        }
+        return Promise.resolve({ data: [] as T });
+      },
+    };
+
+    const result = await runRwaUniverseProbe({
+      client,
+      evidence: fakeEvidence(),
+      gitSha: "test-sha",
+      clientVersion: "0.0.0-test",
+      targetChainId: "56",
+      now: () => new Date(now),
+    });
+
+    expect(result.status).toBe("COMPLETE");
+    expect(result.report.incompleteTokenRecords[0]!.nullFields).toEqual([
+      "assetType",
+      "underlyingName",
+    ]);
+  });
+});

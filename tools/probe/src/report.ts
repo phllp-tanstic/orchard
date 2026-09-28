@@ -25,6 +25,20 @@ export interface InvalidRatioEntry {
   reason: string;
 }
 
+/**
+ * DEC-020: a token whose assetType or underlyingName came back null - it
+ * can't be meaningfully grouped or typed, so it's excluded from
+ * grouping/normalization and reported here instead. A data-quality
+ * observation, not a fail-closed condition: this alone never marks the run
+ * INCOMPLETE.
+ */
+export interface IncompleteTokenRecord {
+  platformId: string;
+  tokenContractAddress: string;
+  tokenSymbol: string;
+  nullFields: ("assetType" | "underlyingName")[];
+}
+
 export interface StalenessEntry {
   binanceChainId: string;
   tokenContractAddress: string;
@@ -58,6 +72,7 @@ export interface RwaUniverseReport {
   overlapMatrix: OverlapEntry[];
   ratioAnomalies: RatioAnomaly[];
   invalidRatios: InvalidRatioEntry[];
+  incompleteTokenRecords: IncompleteTokenRecord[];
   staleness: StalenessEntry[];
   referencePriceAnalysis: ReferencePriceAnalysis;
   unknownFields: Record<string, string[]>;
@@ -140,6 +155,18 @@ export function renderMarkdown(report: RwaUniverseReport): string {
     for (const a of report.invalidRatios) {
       lines.push(
         `- ${a.underlyingTicker} ${a.binanceChainId}:${a.tokenContractAddress}: "${a.tokenToShareRatio}" (${a.reason})`,
+      );
+    }
+  }
+  lines.push("");
+
+  lines.push(`## Incomplete token records (null assetType or underlyingName)`);
+  if (report.incompleteTokenRecords.length === 0) {
+    lines.push(`- none`);
+  } else {
+    for (const r of report.incompleteTokenRecords) {
+      lines.push(
+        `- ${r.platformId} ${r.tokenContractAddress} (${r.tokenSymbol}): null ${r.nullFields.join(", ")}`,
       );
     }
   }
