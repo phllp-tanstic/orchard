@@ -1,4 +1,3 @@
-import { Decimal } from "decimal.js";
 import {
   platformsDataSchema,
   platformSchema,
@@ -21,6 +20,7 @@ import {
   isDocumentedMarketStatus,
   PRICE_BATCH_MAX,
   type Platform,
+  type BpsSample,
   type PriceQuote,
   type TokenRepresentation,
 } from "@orchard/rwa";
@@ -274,8 +274,8 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
   }
 
   const staleness: StalenessEntry[] = [];
-  const bpsVsTokenPrice: Decimal[] = [];
-  const bpsVsImplied: Decimal[] = [];
+  const bpsVsTokenPrice: BpsSample[] = [];
+  const bpsVsImplied: BpsSample[] = [];
   for (const rep of representations) {
     const price = priceByKey.get(`${rep.binanceChainId}:${rep.tokenContractAddress}`);
     if (!price) continue;
@@ -295,8 +295,15 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
       rep.impliedPricePerShare !== undefined
         ? bpsDifference(reference, rep.impliedPricePerShare)
         : undefined;
-    if (dVsTokenPrice !== undefined) bpsVsTokenPrice.push(dVsTokenPrice);
-    if (dVsImplied !== undefined) bpsVsImplied.push(dVsImplied);
+    // Carried so the report can name the token behind each bps extreme.
+    const tokenRef = {
+      tokenContractAddress: rep.tokenContractAddress,
+      platformId: rep.platformId,
+      underlyingTicker: rep.underlyingTicker,
+    };
+    if (dVsTokenPrice !== undefined)
+      bpsVsTokenPrice.push({ value: dVsTokenPrice, token: tokenRef });
+    if (dVsImplied !== undefined) bpsVsImplied.push({ value: dVsImplied, token: tokenRef });
   }
 
   const vsTokenPriceBps = summarizeBps(bpsVsTokenPrice);
@@ -396,12 +403,21 @@ function emptyReport(
     incompleteTokenRecords: [],
     staleness: [],
     referencePriceAnalysis: {
-      vsTokenPriceBps: { sampleSize: 0, min: undefined, max: undefined, medianAbs: undefined },
+      vsTokenPriceBps: {
+        sampleSize: 0,
+        min: undefined,
+        max: undefined,
+        medianAbs: undefined,
+        minToken: undefined,
+        maxToken: undefined,
+      },
       vsImpliedPricePerShareBps: {
         sampleSize: 0,
         min: undefined,
         max: undefined,
         medianAbs: undefined,
+        minToken: undefined,
+        maxToken: undefined,
       },
       verdict: "inconclusive",
     },

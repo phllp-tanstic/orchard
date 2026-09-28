@@ -1,4 +1,4 @@
-import type { BpsSummary, ReferencePriceVerdict } from "@orchard/rwa";
+import type { BpsSummary, BpsTokenRef, ReferencePriceVerdict } from "@orchard/rwa";
 
 export interface ReconciliationEntry {
   platformId: string;
@@ -80,6 +80,24 @@ export interface RwaUniverseReport {
   unknownFields: Record<string, string[]>;
   status: "COMPLETE" | "INCOMPLETE" | "FAILED";
   incompleteReasons: string[];
+}
+
+/** `PLATFORM ADDRESS (TICKER)`, or "n/a" when the summary had no samples. */
+function describeBpsToken(token: BpsTokenRef | undefined): string {
+  if (token === undefined) return "n/a";
+  return `${token.platformId} ${token.tokenContractAddress} (${token.underlyingTicker})`;
+}
+
+/**
+ * The existing range line, plus the single token behind each end of it.
+ * Presentation only - the numbers are unchanged and still come from the JSON report.
+ */
+function renderBpsSummary(label: string, summary: BpsSummary): string[] {
+  return [
+    `- ${label} (bps): n=${summary.sampleSize}, medianAbs=${summary.medianAbs ?? "n/a"}, range=[${summary.min ?? "n/a"}, ${summary.max ?? "n/a"}]`,
+    `  - min ${summary.min ?? "n/a"}: ${describeBpsToken(summary.minToken)}`,
+    `  - max ${summary.max ?? "n/a"}: ${describeBpsToken(summary.maxToken)}`,
+  ];
 }
 
 /** Renders the Markdown report FROM the JSON report only - never independently computed. */
@@ -185,12 +203,16 @@ export function renderMarkdown(report: RwaUniverseReport): string {
 
   lines.push(`## referencePrice analysis`);
   lines.push(`- Verdict: **${report.referencePriceAnalysis.verdict}**`);
-  lines.push(
-    `- vs tokenPrice (bps): n=${report.referencePriceAnalysis.vsTokenPriceBps.sampleSize}, medianAbs=${report.referencePriceAnalysis.vsTokenPriceBps.medianAbs ?? "n/a"}, range=[${report.referencePriceAnalysis.vsTokenPriceBps.min ?? "n/a"}, ${report.referencePriceAnalysis.vsTokenPriceBps.max ?? "n/a"}]`,
-  );
-  lines.push(
-    `- vs impliedPricePerShare (bps): n=${report.referencePriceAnalysis.vsImpliedPricePerShareBps.sampleSize}, medianAbs=${report.referencePriceAnalysis.vsImpliedPricePerShareBps.medianAbs ?? "n/a"}, range=[${report.referencePriceAnalysis.vsImpliedPricePerShareBps.min ?? "n/a"}, ${report.referencePriceAnalysis.vsImpliedPricePerShareBps.max ?? "n/a"}]`,
-  );
+  for (const line of renderBpsSummary(
+    "vs tokenPrice",
+    report.referencePriceAnalysis.vsTokenPriceBps,
+  ))
+    lines.push(line);
+  for (const line of renderBpsSummary(
+    "vs impliedPricePerShare",
+    report.referencePriceAnalysis.vsImpliedPricePerShareBps,
+  ))
+    lines.push(line);
   lines.push("");
 
   lines.push(`## Staleness (tokenPriceUpdatedAt)`);
