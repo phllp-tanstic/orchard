@@ -40,6 +40,7 @@ function report(overrides: Partial<QuoteFeasibilityReport> = {}): QuoteFeasibili
       spendTokenSymbolObserved: "USDT",
       spendTokenDecimalsConfirmedLive: true,
       spendSizesUsd: ["10", "100", "1000"],
+      slippagePercent: "0.5",
     },
     results: [
       {

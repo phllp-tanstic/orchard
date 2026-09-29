@@ -77,6 +77,14 @@ export interface RunQuoteProbeDeps {
   spendTokenDecimals: number;
   /** Whole-USD spend sizes. Default $10/$100/$1000 (spec T3). */
   spendSizesUsd?: readonly string[];
+  /**
+   * slippagePercent sent on every /swap. Live /swap rejects a request carrying
+   * neither slippagePercent nor autoSlippage with code 40001 ("either
+   * slippagePercent or autoSlippage is required"), even though the doc page
+   * lists both as optional - confirmed 2026-09-30. Recorded in the report,
+   * since slippage determines the built tx's minReceiveAmount.
+   */
+  slippagePercent?: string;
   /** Seed for the single-representation draw. */
   seed: string;
   singleRepPerPlatform?: number;
@@ -102,6 +110,8 @@ export interface RunQuoteProbeResult {
 
 const DEFAULT_SPEND_SIZES_USD = ["10", "100", "1000"] as const;
 const DEFAULT_TTL_OBSERVATION_COUNT = 1;
+/** Neither documented nor derived - a probe input, recorded in the report. */
+const DEFAULT_SLIPPAGE_PERCENT = "0.5";
 const DEFAULT_TTL_WAIT_SECONDS = 35;
 const PLATFORM_IDS = ["ondo", "bstock"] as const;
 
@@ -145,6 +155,7 @@ export async function runQuoteFeasibilityProbe(
   const spendSizes = deps.spendSizesUsd ?? DEFAULT_SPEND_SIZES_USD;
   const ttlWaitSeconds = deps.ttlWaitSeconds ?? DEFAULT_TTL_WAIT_SECONDS;
   const ttlObservationBudget = deps.ttlObservationCount ?? DEFAULT_TTL_OBSERVATION_COUNT;
+  const slippagePercent = deps.slippagePercent ?? DEFAULT_SLIPPAGE_PERCENT;
 
   const probeRunId = await deps.evidence.openProbeRun({
     gitSha: deps.gitSha,
@@ -359,6 +370,7 @@ export async function runQuoteFeasibilityProbe(
             toTokenAddress: rep.tokenContractAddress,
             userWalletAddress: deps.probeWalletAddress,
             quoteId: best.quoteId,
+            slippagePercent,
           }),
         );
         recordCode(res.envelope.code);
@@ -512,6 +524,7 @@ export async function runQuoteFeasibilityProbe(
           firstQuoteId: best.quoteId,
           firstToTokenAmount: best.toTokenAmount,
           waitSeconds: ttlWaitSeconds,
+          slippagePercent,
           sleep,
           recordCode,
         });
@@ -561,6 +574,7 @@ export async function runQuoteFeasibilityProbe(
       spendTokenDecimals: deps.spendTokenDecimals,
       spendTokenDecimalsConfirmedLive,
       spendSizesUsd: [...spendSizes],
+      slippagePercent,
       ...(spendTokenSymbolObserved !== undefined
         ? { spendTokenSymbolObserved: spendTokenSymbolObserved }
         : {}),
@@ -690,6 +704,7 @@ async function observeTtl(
     firstQuoteId: string;
     firstToTokenAmount: string;
     waitSeconds: number;
+    slippagePercent: string;
     sleep: (ms: number) => Promise<void>;
     recordCode: (code: string | undefined) => void;
   },
@@ -720,6 +735,7 @@ async function observeTtl(
         toTokenAddress: rep.tokenContractAddress,
         userWalletAddress: deps.probeWalletAddress,
         quoteId: firstQuoteId,
+        slippagePercent: args.slippagePercent,
       }),
     );
     observation.expiredQuoteRejected = false;
@@ -816,6 +832,7 @@ function emptyReport(
       spendTokenDecimals: deps.spendTokenDecimals,
       spendTokenDecimalsConfirmedLive: false,
       spendSizesUsd: [...(deps.spendSizesUsd ?? DEFAULT_SPEND_SIZES_USD)],
+      slippagePercent: deps.slippagePercent ?? DEFAULT_SLIPPAGE_PERCENT,
     },
     results: [],
     ttlObservations: [],

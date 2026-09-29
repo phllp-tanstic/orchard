@@ -158,6 +158,15 @@ export interface QuoteFeasibilityReport {
     spendTokenSymbolObserved?: string;
     spendTokenDecimalsConfirmedLive: boolean;
     spendSizesUsd: string[];
+    /**
+     * slippagePercent sent on every /swap call. The Trading API doc page lists
+     * both slippagePercent and autoSlippage as optional, but live /swap rejects
+     * a request carrying neither with envelope code 40001 "either
+     * slippagePercent or autoSlippage is required" (confirmed 2026-09-30).
+     * Recorded here because slippage determines the tx's minReceiveAmount, so
+     * it is part of what was measured, not an invisible default.
+     */
+    slippagePercent: string;
   };
 
   results: RepresentationResult[];
@@ -238,6 +247,11 @@ export function renderMarkdown(report: QuoteFeasibilityReport): string {
       ")",
   );
   lines.push(`- Spend sizes (USD): ${report.probeConfig.spendSizesUsd.join(", ")}`);
+  lines.push(
+    `- slippagePercent sent on every /swap: ${report.probeConfig.slippagePercent} ` +
+      `(live /swap rejects a request with neither slippagePercent nor autoSlippage, code 40001, ` +
+      `though the doc page lists both as optional)`,
+  );
   lines.push(`- Sample seed: \`${report.sampling.seed}\``);
   lines.push(
     `- Representations: ${report.sampling.totalRepresentations} ` +

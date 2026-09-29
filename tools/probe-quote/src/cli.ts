@@ -45,6 +45,16 @@ const DEFAULT_SPEND_TOKEN_DECIMALS = 18;
 /** Fixed default so a run is reproducible without passing anything. */
 const DEFAULT_SEED = "orchard-F001B-T3";
 
+/**
+ * slippagePercent for every /swap call. Live /swap rejects a request carrying
+ * neither slippagePercent nor autoSlippage with code 40001, even though the doc
+ * page lists both as optional (confirmed 2026-09-30). This value is a probe
+ * input, not a documented or derived figure: it is recorded in the report
+ * because it determines the built tx's minReceiveAmount. Nothing is ever
+ * executed at this slippage. Overridable via PROBE_SLIPPAGE_PERCENT.
+ */
+const DEFAULT_SLIPPAGE_PERCENT = "0.5";
+
 async function main(): Promise<void> {
   // Validate all config BEFORE opening a run or touching the pool, so a
   // config error never leaves a probe_run stuck RUNNING.
@@ -65,6 +75,7 @@ async function main(): Promise<void> {
     .filter((s) => s.length > 0);
   const singleRepPerPlatform = Number(process.env["PROBE_SINGLE_REP_PER_PLATFORM"] ?? 10);
   const ttlObservationCount = Number(process.env["PROBE_TTL_OBSERVATIONS"] ?? 1);
+  const slippagePercent = process.env["PROBE_SLIPPAGE_PERCENT"] ?? DEFAULT_SLIPPAGE_PERCENT;
   const gitSha = resolveGitSha();
 
   if (!Number.isInteger(spendTokenDecimals) || spendTokenDecimals < 0) {
@@ -102,6 +113,7 @@ async function main(): Promise<void> {
         seed,
         singleRepPerPlatform,
         ttlObservationCount,
+        slippagePercent,
         evidence: {
           openProbeRun: () => Promise.resolve(probeRunId),
           closeProbeRun: (args) => closeProbeRun(pool, args),

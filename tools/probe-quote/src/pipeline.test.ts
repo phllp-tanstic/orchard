@@ -207,6 +207,25 @@ describe("runQuoteFeasibilityProbe: happy path", () => {
     }
   });
 
+  it("always sends a slippagePercent on /swap - live /swap rejects a request without one", async () => {
+    // Confirmed live 2026-09-30: /swap answers code 40001 "either
+    // slippagePercent or autoSlippage is required" when neither is present,
+    // although the doc page lists both as optional.
+    const stub = makeClient({}, TOKENS);
+    const evidence = makeEvidence();
+    const result = await runQuoteFeasibilityProbe(
+      baseDeps(stub.client, evidence.ops, { slippagePercent: "0.5", ttlObservationCount: 1 }),
+    );
+
+    const swaps = stub.calls.filter((c) => c.path === "/api/v1/dex/aggregator/swap");
+    expect(swaps.length).toBeGreaterThan(0);
+    for (const call of swaps) {
+      expect(call.query?.["slippagePercent"]).toBe("0.5");
+    }
+    // Including the stale-quoteId reuse call in the TTL observation.
+    expect(result.report.probeConfig.slippagePercent).toBe("0.5");
+  });
+
   it("never calls order/submit or broadcast", async () => {
     const stub = makeClient({}, TOKENS);
     const evidence = makeEvidence();
