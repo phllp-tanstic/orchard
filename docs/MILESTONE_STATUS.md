@@ -1,15 +1,22 @@
 # Milestone Status
 
-**Status: bootstrap.** No milestone has live-verified results yet.
+**Status: M1 closed.** Feature 001-A is live-verified; later milestones are not started.
 
 Status vocabulary: `VERIFIED`, `PARTIAL`, `GATED`, `NOT IMPLEMENTED`, `DEVIATED`, `UNVERIFIED`
 (see `AGENTS.md`).
 
 ## M1 — Live Binance Authentication + RWA Universe
 
-- **Status:** NOT IMPLEMENTED
+- **Status:** CLOSED / COMPLETE (`VERIFIED`) - Feature 001-A closed 2026-09-29.
 - Scope: `docs/specs/F001A-spec.md` (T1-T4, pre-live scaffold and pipeline). Live acceptance
-  (AC1-AC4 of Feature 001) happens in T5, run by the owner.
+  (AC1-AC4 of Feature 001) happened in T5, run by the owner.
+- Final live run: probe_run_id `26943e2a-cd8e-4214-ad44-f60c216d56d7` (2026-09-29, terminal
+  event `COMPLETE`, git_sha `a81f3b4`). 445 unique underlyings across 485 representations
+  (ondo 442, bstock 46), 40 multi-representation tickers, referencePrice temporal-consistency
+  verdict `stable` (DEC-026).
+- Carried forward, disclosed and already logged - not re-investigated at closure: 3 tokens
+  excluded for a null `assetType`/`underlyingName` (DEC-020), and the platforms-vs-tokens
+  count gap, which is informational only and never gates run status (DEC-023).
 
 ## Open gates
 
@@ -24,6 +31,11 @@ Status vocabulary: `VERIFIED`, `PARTIAL`, `GATED`, `NOT IMPLEMENTED`, `DEVIATED`
   Widening it to every ticker costs one profile call per representation (~485 in that run,
   against the 80 actually made), so the decision is a rate-limit and runtime trade-off, not
   a code change alone.
+- Known flake: `db/migrate.test.ts`'s destructive-migration guard (5s timeout) and
+  `test/gitleaks-regression.test.ts`'s `beforeAll` (10s timeout) can time out under
+  load-heavy parallel test runs (subprocess spawn + 14-worker vitest concurrency on
+  Windows). Confirmed load-correlated, not tree-content-correlated, via A/B testing.
+  Not yet fixed.
 
 ## Incidents
 
