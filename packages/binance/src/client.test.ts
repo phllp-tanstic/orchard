@@ -433,3 +433,38 @@ describe("BinanceWeb3Client base URL normalisation", () => {
     expect(`${url.pathname}${url.search}`).toBe(records[0]?.endpoint);
   });
 });
+
+describe("numeric envelope codes (the provider sends code as a JSON number)", () => {
+  // Confirmed live 2026-09-30: every endpoint returns `"code": 40401` as a
+  // number, not "40401". Before normalization, BinanceApiError.code held the
+  // number, so every === comparison against a documented string code failed:
+  // `documented` was always false and `isRetryable()` always true, which meant
+  // an auth failure was retried maxRetries times instead of failing fast.
+  it("normalizes a numeric code to a string", () => {
+    const err = new BinanceApiError({ code: 40401 as unknown as number }, 200);
+    expect(err.code).toBe("40401");
+    expect(typeof err.code).toBe("string");
+  });
+
+  it("recognizes a numeric documented code as documented", () => {
+    expect(new BinanceApiError({ code: 40101 }, 200).documented).toBe(true);
+    expect(new BinanceApiError({ code: 49999 }, 200).documented).toBe(false);
+  });
+
+  it("does not retry a numeric auth code", () => {
+    for (const code of [40101, 40102, 40104]) {
+      expect(new BinanceApiError({ code }, 200).isRetryable()).toBe(false);
+    }
+  });
+
+  it("still retries a numeric transient code", () => {
+    expect(new BinanceApiError({ code: 50000 }, 200).isRetryable()).toBe(true);
+  });
+
+  it("treats a string code identically, so existing callers are unaffected", () => {
+    const err = new BinanceApiError({ code: "40101" }, 200);
+    expect(err.code).toBe("40101");
+    expect(err.documented).toBe(true);
+    expect(err.isRetryable()).toBe(false);
+  });
+});

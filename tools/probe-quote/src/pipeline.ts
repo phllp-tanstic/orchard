@@ -43,7 +43,11 @@ import type {
 } from "./report.js";
 
 export interface RequestClient {
-  request<T>(spec: RequestSpec): Promise<{ data: T; envelope: { code: string } }>;
+  /**
+   * `envelope.code` is `string | number` because the provider sends a JSON
+   * number. Always normalize it with `String()` before comparing or counting.
+   */
+  request<T>(spec: RequestSpec): Promise<{ data: T; envelope: { code: string | number } }>;
 }
 
 export interface EvidenceOps {
@@ -282,7 +286,7 @@ export async function runQuoteFeasibilityProbe(
           userWalletAddress: deps.probeWalletAddress,
         });
         const res = await deps.client.request<unknown>(spec);
-        recordCode(res.envelope.code);
+        recordCode(String(res.envelope.code));
         routes = quoteDataSchema.parse(res.data);
         const extra = unknownArrayItemKeys(
           quoteRouteSchema.shape,
@@ -374,7 +378,7 @@ export async function runQuoteFeasibilityProbe(
             slippagePercent,
           }),
         );
-        recordCode(res.envelope.code);
+        recordCode(String(res.envelope.code));
         swapData = swapDataSchema.parse(res.data);
         const extra = unknownObjectKeys(swapDataSchema.shape, res.data as Record<string, unknown>);
         if (extra.length) mergeUnknown(unknownFields, "swap", extra);
@@ -449,7 +453,7 @@ export async function runQuoteFeasibilityProbe(
               vendor: rfqVendor,
             }),
           );
-          recordCode(res.envelope.code);
+          recordCode(String(res.envelope.code));
           const parsed = approveTransactionDataSchema.parse(res.data);
           const list = approveTransactionsOf(parsed);
           const first = list[0];
@@ -679,7 +683,7 @@ async function attemptSimulate(
         balanceChangeCount: data.balanceChanges?.length ?? 0,
         allowanceChangeCount: data.allowanceChanges?.length ?? 0,
       },
-      providerCode: res.envelope.code,
+      providerCode: String(res.envelope.code),
       unknownKeys,
     };
   } catch (err) {
@@ -763,7 +767,7 @@ async function observeTtl(
         userWalletAddress: deps.probeWalletAddress,
       }),
     );
-    recordCode(res.envelope.code);
+    recordCode(String(res.envelope.code));
     const routes = quoteDataSchema.parse(res.data);
     const best = routes.find((r) => r.isBest === true) ?? routes[0];
     if (best === undefined) {
