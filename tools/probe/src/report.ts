@@ -1,4 +1,4 @@
-import type { BpsSummary, BpsTokenRef, ReferencePriceVerdict } from "@orchard/rwa";
+import type { BpsSummary, BpsTokenRef, ReferencePriceStabilityVerdict } from "@orchard/rwa";
 
 export interface ReconciliationEntry {
   platformId: string;
@@ -51,10 +51,16 @@ export interface OverlapEntry {
   platformIds: string[];
 }
 
-export interface ReferencePriceAnalysis {
-  vsTokenPriceBps: BpsSummary;
-  vsImpliedPricePerShareBps: BpsSummary;
-  verdict: ReferencePriceVerdict;
+/**
+ * DEC-026: a temporal-consistency check, not an independence check. Compares
+ * the per-underlying-share price read from /rwa/tokens (referencePrice, T1)
+ * against the same quantity re-read from /rwa/price (tokenPrice, T2, seconds
+ * later). /rwa/price referencePrice is not used - see docs/DEVEX_LOG.md.
+ */
+export interface ReferencePriceStability {
+  /** bps drift of the T2 reading from the T1 baseline. Positive: the later reading is higher. */
+  perShareDriftBps: BpsSummary;
+  verdict: ReferencePriceStabilityVerdict;
 }
 
 /** Blueprint M1 fields plus the reconciliation/analysis detail spec T4 requires. */
@@ -76,7 +82,7 @@ export interface RwaUniverseReport {
   invalidRatios: InvalidRatioEntry[];
   incompleteTokenRecords: IncompleteTokenRecord[];
   staleness: StalenessEntry[];
-  referencePriceAnalysis: ReferencePriceAnalysis;
+  referencePriceStability: ReferencePriceStability;
   unknownFields: Record<string, string[]>;
   status: "COMPLETE" | "INCOMPLETE" | "FAILED";
   incompleteReasons: string[];
@@ -201,16 +207,16 @@ export function renderMarkdown(report: RwaUniverseReport): string {
   }
   lines.push("");
 
-  lines.push(`## referencePrice analysis`);
-  lines.push(`- Verdict: **${report.referencePriceAnalysis.verdict}**`);
+  lines.push(`## referencePrice temporal consistency`);
+  lines.push(
+    `Per-underlying-share price read from /rwa/tokens (referencePrice), then re-read seconds ` +
+      `later from /rwa/price (tokenPrice). Drift between the two readings is elapsed time, not ` +
+      `a pricing disagreement. /rwa/price referencePrice is not used here.`,
+  );
+  lines.push(`- Verdict: **${report.referencePriceStability.verdict}**`);
   for (const line of renderBpsSummary(
-    "vs tokenPrice",
-    report.referencePriceAnalysis.vsTokenPriceBps,
-  ))
-    lines.push(line);
-  for (const line of renderBpsSummary(
-    "vs impliedPricePerShare",
-    report.referencePriceAnalysis.vsImpliedPricePerShareBps,
+    "per-share drift, /rwa/tokens T1 -> /rwa/price T2",
+    report.referencePriceStability.perShareDriftBps,
   ))
     lines.push(line);
   lines.push("");

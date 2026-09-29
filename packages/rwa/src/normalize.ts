@@ -24,6 +24,21 @@ export function parseDecimal(value: string): Decimal {
 }
 
 /**
+ * parseDecimal for values the provider is not contractually required to make
+ * numeric. The price fields are typed z.string() with no numeric validation,
+ * so a non-numeric one would make parseDecimal throw; this returns undefined
+ * instead, letting a caller drop the observation rather than fail the run.
+ */
+export function tryParseDecimal(value: string): Decimal | undefined {
+  try {
+    const parsed = new Decimal(value);
+    return parsed.isFinite() ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * A plain unsigned decimal: "0", or a no-leading-zero integer part optionally
  * followed by a fractional part. No sign, no exponent, no hex/binary/octal
  * prefix, no digit-group separators - each of those parses as a number in

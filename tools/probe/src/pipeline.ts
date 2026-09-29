@@ -9,13 +9,14 @@ import {
   unknownArrayItemKeys,
   unknownObjectKeys,
   parseDecimal,
+  tryParseDecimal,
   bpsDifference,
   groupByUnderlyingTicker,
   multiRepresentationTickers,
   partitionCompleteTokens,
   toRepresentation,
   summarizeBps,
-  classifyReferencePrice,
+  classifyReferencePriceStability,
   ASSET_TYPE_LABEL,
   isDocumentedMarketStatus,
   PRICE_BATCH_MAX,
@@ -274,8 +275,7 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
   }
 
   const staleness: StalenessEntry[] = [];
-  const bpsVsTokenPrice: BpsSample[] = [];
-  const bpsVsImplied: BpsSample[] = [];
+  const perShareDrift: BpsSample[] = [];
   for (const rep of representations) {
     const price = priceByKey.get(`${rep.binanceChainId}:${rep.tokenContractAddress}`);
     if (!price) continue;
@@ -288,30 +288,38 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
       ageSeconds,
     });
 
-    const reference = parseDecimal(price.referencePrice);
-    const tokenPrice = parseDecimal(price.tokenPrice);
-    const dVsTokenPrice = bpsDifference(reference, tokenPrice);
-    const dVsImplied =
-      rep.impliedPricePerShare !== undefined
-        ? bpsDifference(reference, rep.impliedPricePerShare)
+    // DEC-026: /rwa/tokens referencePrice (read at T1, above) and /rwa/price
+    // tokenPrice (read at T2, seconds later) are the same per-underlying-share
+    // quantity - see docs/DEVEX_LOG.md. Drift between them is elapsed time, so
+    // this measures how far the later reading moved from the earlier baseline.
+    // price.referencePrice is deliberately unused here: it sits one further
+    // division by tokenToShareRatio below price.tokenPrice, an inconsistency
+    // between the two endpoints that is logged and still unresolved.
+    // Both are z.string() with no numeric validation, so parse defensively:
+    // a non-numeric value drops this one observation instead of failing the run.
+    const listReferencePrice = tryParseDecimal(rep.referencePrice);
+    const refetchedPerShare = tryParseDecimal(price.tokenPrice);
+    const drift =
+      listReferencePrice !== undefined && refetchedPerShare !== undefined
+        ? bpsDifference(refetchedPerShare, listReferencePrice)
         : undefined;
-    // Carried so the report can name the token behind each bps extreme.
-    const tokenRef = {
-      tokenContractAddress: rep.tokenContractAddress,
-      platformId: rep.platformId,
-      underlyingTicker: rep.underlyingTicker,
-    };
-    if (dVsTokenPrice !== undefined)
-      bpsVsTokenPrice.push({ value: dVsTokenPrice, token: tokenRef });
-    if (dVsImplied !== undefined) bpsVsImplied.push({ value: dVsImplied, token: tokenRef });
+    if (drift !== undefined) {
+      perShareDrift.push({
+        value: drift,
+        // Carried so the report can name the token behind each bps extreme.
+        token: {
+          tokenContractAddress: rep.tokenContractAddress,
+          platformId: rep.platformId,
+          underlyingTicker: rep.underlyingTicker,
+        },
+      });
+    }
   }
 
-  const vsTokenPriceBps = summarizeBps(bpsVsTokenPrice);
-  const vsImpliedPricePerShareBps = summarizeBps(bpsVsImplied);
-  const referencePriceAnalysis = {
-    vsTokenPriceBps,
-    vsImpliedPricePerShareBps,
-    verdict: classifyReferencePrice(vsTokenPriceBps, vsImpliedPricePerShareBps),
+  const perShareDriftBps = summarizeBps(perShareDrift);
+  const referencePriceStability = {
+    perShareDriftBps,
+    verdict: classifyReferencePriceStability(perShareDriftBps),
   };
 
   const assetTypeBreakdown: Record<string, number> = {};
@@ -363,7 +371,7 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
     invalidRatios,
     incompleteTokenRecords,
     staleness,
-    referencePriceAnalysis,
+    referencePriceStability,
     unknownFields,
     status,
     incompleteReasons: reasons,
@@ -402,16 +410,8 @@ function emptyReport(
     invalidRatios: [],
     incompleteTokenRecords: [],
     staleness: [],
-    referencePriceAnalysis: {
-      vsTokenPriceBps: {
-        sampleSize: 0,
-        min: undefined,
-        max: undefined,
-        medianAbs: undefined,
-        minToken: undefined,
-        maxToken: undefined,
-      },
-      vsImpliedPricePerShareBps: {
+    referencePriceStability: {
+      perShareDriftBps: {
         sampleSize: 0,
         min: undefined,
         max: undefined,
