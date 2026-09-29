@@ -56,34 +56,43 @@ export function summarizeBps(samples: readonly BpsSample[]): BpsSummary {
   };
 }
 
-export type ReferencePriceVerdict =
-  "derived-from-tokenPrice" | "derived-from-impliedPricePerShare" | "independent" | "inconclusive";
-
-/** A median absolute bps difference at or below this counts as "matches" for verdict purposes. */
-const NEAR_ZERO_BPS_THRESHOLD = new Decimal(1);
+/**
+ * DEC-026: what the referencePrice check answers.
+ *
+ * It compares /rwa/tokens referencePrice (read at T1) against /rwa/price
+ * tokenPrice (read at T2, seconds later). The investigation recorded in
+ * docs/DEVEX_LOG.md established these are the same per-underlying-share
+ * quantity: across all 485 paired tokens in probe_run 634f558e their median
+ * difference was 1.7e-13 bps, and both endpoints satisfy
+ * tokenPrice / referencePrice == tokenToShareRatio internally.
+ *
+ * So the only thing separating the two readings is elapsed time. This is a
+ * temporal-consistency check, NOT a test of whether referencePrice is
+ * independently sourced - the earlier verdicts ("independent",
+ * "derived-from-tokenPrice") compared per-share against per-token numbers
+ * and measured tokenToShareRatio rather than any pricing relationship.
+ */
+export type ReferencePriceStabilityVerdict = "stable" | "unstable" | "inconclusive";
 
 /**
- * Per spec T4 step 7: state whether referencePrice appears independent or
- * derived, by comparing its typical bps distance from tokenPrice and from
- * tokenPrice/tokenToShareRatio (impliedPricePerShare).
+ * A median absolute drift at or below this counts as stable. 1 bps is 0.01%:
+ * below the per-token movement seen over the seconds between the two calls
+ * in probe_run 634f558e (p50 ~0 bps, p90 1.21 bps).
  */
-export function classifyReferencePrice(
-  vsTokenPrice: BpsSummary,
-  vsImplied: BpsSummary,
-): ReferencePriceVerdict {
-  if (vsTokenPrice.sampleSize === 0 && vsImplied.sampleSize === 0) return "inconclusive";
+const STABLE_MEDIAN_ABS_BPS = new Decimal(1);
 
-  const tokenPriceNear =
-    vsTokenPrice.medianAbs !== undefined &&
-    new Decimal(vsTokenPrice.medianAbs).lessThanOrEqualTo(NEAR_ZERO_BPS_THRESHOLD);
-  const impliedNear =
-    vsImplied.medianAbs !== undefined &&
-    new Decimal(vsImplied.medianAbs).lessThanOrEqualTo(NEAR_ZERO_BPS_THRESHOLD);
-
-  if (tokenPriceNear && !impliedNear) return "derived-from-tokenPrice";
-  if (impliedNear && !tokenPriceNear) return "derived-from-impliedPricePerShare";
-  // Both match (e.g. ratio is 1, so tokenPrice === impliedPricePerShare) or
-  // neither matches closely: can't cleanly distinguish a single driver.
-  if (tokenPriceNear && impliedNear) return "derived-from-tokenPrice";
-  return "independent";
+/**
+ * Verdict from the median absolute drift, not the extremes: a handful of
+ * fast-moving tokens should not make a whole run read as unstable. The tails
+ * are reported separately through BpsSummary min/max and their extreme tokens.
+ */
+export function classifyReferencePriceStability(
+  perShareDrift: BpsSummary,
+): ReferencePriceStabilityVerdict {
+  if (perShareDrift.sampleSize === 0 || perShareDrift.medianAbs === undefined) {
+    return "inconclusive";
+  }
+  return new Decimal(perShareDrift.medianAbs).lessThanOrEqualTo(STABLE_MEDIAN_ABS_BPS)
+    ? "stable"
+    : "unstable";
 }

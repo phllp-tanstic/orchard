@@ -1,16 +1,13 @@
 import { Decimal } from "decimal.js";
 import { describe, expect, it } from "vitest";
-import { summarizeBps, classifyReferencePrice } from "./analysis.js";
-import type { BpsTokenRef } from "./analysis.js";
+import { summarizeBps, classifyReferencePriceStability } from "./analysis.js";
+import type { BpsSummary, BpsTokenRef } from "./analysis.js";
 
 const tokenRef = (ticker: string): BpsTokenRef => ({
   tokenContractAddress: `0x${ticker.toLowerCase()}`,
   platformId: "ondo",
   underlyingTicker: ticker,
 });
-
-/** The verdict only reads sampleSize/medianAbs; the extremes are carried but unused there. */
-const noExtremes = { minToken: undefined, maxToken: undefined };
 
 describe("summarizeBps", () => {
   it("returns zero-sample summary for an empty array", () => {
@@ -90,47 +87,45 @@ describe("summarizeBps", () => {
   });
 });
 
-describe("classifyReferencePrice", () => {
-  it("is inconclusive with no samples at all", () => {
-    const empty = {
-      sampleSize: 0,
-      min: undefined,
-      max: undefined,
-      medianAbs: undefined,
-      ...noExtremes,
-    };
-    expect(classifyReferencePrice(empty, empty)).toBe("inconclusive");
+describe("classifyReferencePriceStability", () => {
+  const summary = (over: Partial<BpsSummary> = {}): BpsSummary => ({
+    sampleSize: 5,
+    min: "-0.5",
+    max: "0.5",
+    medianAbs: "0.2",
+    minToken: undefined,
+    maxToken: undefined,
+    ...over,
   });
 
-  it("calls it derived-from-tokenPrice when referencePrice tracks tokenPrice tightly but not impliedPricePerShare", () => {
-    const nearTokenPrice = {
-      sampleSize: 5,
-      min: "-0.5",
-      max: "0.5",
-      medianAbs: "0.2",
-      ...noExtremes,
-    };
-    const farFromImplied = { sampleSize: 5, min: "-50", max: "50", medianAbs: "40", ...noExtremes };
-    expect(classifyReferencePrice(nearTokenPrice, farFromImplied)).toBe("derived-from-tokenPrice");
+  it("is inconclusive with no samples", () => {
+    expect(
+      classifyReferencePriceStability(
+        summary({ sampleSize: 0, min: undefined, max: undefined, medianAbs: undefined }),
+      ),
+    ).toBe("inconclusive");
   });
 
-  it("calls it derived-from-impliedPricePerShare in the reverse case", () => {
-    const farFromTokenPrice = {
-      sampleSize: 5,
-      min: "-50",
-      max: "50",
-      medianAbs: "40",
-      ...noExtremes,
-    };
-    const nearImplied = { sampleSize: 5, min: "-0.5", max: "0.5", medianAbs: "0.2", ...noExtremes };
-    expect(classifyReferencePrice(farFromTokenPrice, nearImplied)).toBe(
-      "derived-from-impliedPricePerShare",
-    );
+  it("is inconclusive when there are samples but no median", () => {
+    expect(classifyReferencePriceStability(summary({ medianAbs: undefined }))).toBe("inconclusive");
   });
 
-  it("calls it independent when it tracks neither closely", () => {
-    const far1 = { sampleSize: 5, min: "-50", max: "50", medianAbs: "40", ...noExtremes };
-    const far2 = { sampleSize: 5, min: "-60", max: "60", medianAbs: "45", ...noExtremes };
-    expect(classifyReferencePrice(far1, far2)).toBe("independent");
+  it("calls a run stable when the median absolute drift is under a basis point", () => {
+    expect(classifyReferencePriceStability(summary({ medianAbs: "0.2" }))).toBe("stable");
+  });
+
+  it("treats exactly 1 bps of median drift as stable", () => {
+    expect(classifyReferencePriceStability(summary({ medianAbs: "1" }))).toBe("stable");
+  });
+
+  it("calls a run unstable once the median drift passes a basis point", () => {
+    expect(classifyReferencePriceStability(summary({ medianAbs: "1.0001" }))).toBe("unstable");
+    expect(classifyReferencePriceStability(summary({ medianAbs: "40" }))).toBe("unstable");
+  });
+
+  it("judges on the median, not the extremes - wide tails alone do not make a run unstable", () => {
+    // p99/max drift of this size was recorded live in probe_run 634f558e.
+    const wideTails = summary({ min: "-73.3", max: "73.3", medianAbs: "0.0000000001" });
+    expect(classifyReferencePriceStability(wideTails)).toBe("stable");
   });
 });
