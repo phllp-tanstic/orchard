@@ -720,11 +720,16 @@ describe("runRwaUniverseProbe - /rwa/price batch size (DEC-024)", () => {
   });
 });
 
-describe("runRwaUniverseProbe - bps extreme attribution", () => {
-  /** ondo sits above its tokenPrice, bstock below it, so each end of the range has one owner. */
-  function skewedClient(now: number): RequestClient {
-    const ondo = ondoToken({ tokenPrice: "100.00", referencePrice: "100.50" });
-    const bstock = bstockToken({ tokenPrice: "10.00", referencePrice: "9.98" });
+describe("runRwaUniverseProbe - referencePrice temporal consistency (DEC-026)", () => {
+  /**
+   * The drift compared is list referencePrice (T1) against price tokenPrice (T2).
+   * priceFor() echoes the token's own tokenPrice, so setting each token's
+   * referencePrice and tokenPrice sets its T1 baseline and its T2 reading.
+   * ondo drifts up 50 bps (100 -> 100.50), bstock down 20 bps (10 -> 9.98).
+   */
+  function driftingClient(now: number): RequestClient {
+    const ondo = ondoToken({ referencePrice: "100", tokenPrice: "100.50" });
+    const bstock = bstockToken({ referencePrice: "10", tokenPrice: "9.98" });
     return {
       request: <T>(spec: RequestSpec) => {
         if (spec.path === "/api/v1/dex/market/rwa/platforms") {
@@ -752,35 +757,51 @@ describe("runRwaUniverseProbe - bps extreme attribution", () => {
     };
   }
 
-  it("names the token behind the max and min bps deviation in both comparisons", async () => {
+  async function runDrifting() {
     const now = Date.UTC(2026, 8, 21, 12, 0, 0);
-    const result = await runRwaUniverseProbe({
-      client: skewedClient(now),
+    return runRwaUniverseProbe({
+      client: driftingClient(now),
       evidence: fakeEvidence(),
       gitSha: "test-sha",
       clientVersion: "0.0.0-test",
       targetChainId: "56",
       now: () => new Date(now),
     });
+  }
 
-    const { vsTokenPriceBps, vsImpliedPricePerShareBps } = result.report.referencePriceAnalysis;
+  it("measures drift of the re-fetched per-share price from the list baseline", async () => {
+    const { perShareDriftBps } = (await runDrifting()).report.referencePriceStability;
+    expect(perShareDriftBps.sampleSize).toBe(2);
+    expect(perShareDriftBps.max).toBe("50");
+    expect(perShareDriftBps.min).toBe("-20");
+  });
 
-    // referencePrice 100.50 against tokenPrice 100.00 is +50 bps; 9.98 against 10.00 is -20 bps.
-    expect(vsTokenPriceBps.max).toBe("50");
-    expect(vsTokenPriceBps.maxToken).toEqual({
+  it("names the token at each end of the drift range", async () => {
+    const { perShareDriftBps } = (await runDrifting()).report.referencePriceStability;
+    expect(perShareDriftBps.maxToken).toEqual({
       tokenContractAddress: ondoToken().tokenContractAddress,
       platformId: "ondo",
       underlyingTicker: "EXA",
     });
-    expect(vsTokenPriceBps.min).toBe("-20");
-    expect(vsTokenPriceBps.minToken).toEqual({
+    expect(perShareDriftBps.minToken).toEqual({
       tokenContractAddress: bstockToken().tokenContractAddress,
       platformId: "bstock",
       underlyingTicker: "EXA",
     });
+  });
 
-    // bstock's 0.1 ratio implies 100 per share, so 9.98 is far below it.
-    expect(vsImpliedPricePerShareBps.maxToken?.platformId).toBe("ondo");
-    expect(vsImpliedPricePerShareBps.minToken?.platformId).toBe("bstock");
+  it("does not let tokenToShareRatio leak into the drift figure", async () => {
+    // bstock carries tokenToShareRatio 0.1. Under the pre-DEC-026 comparison
+    // that alone produced a ~9000 bps reading; drift must not see the ratio.
+    const { perShareDriftBps } = (await runDrifting()).report.referencePriceStability;
+    expect(bstockToken().tokenToShareRatio).toBe("0.1");
+    expect(perShareDriftBps.min).toBe("-20");
+    expect(Math.abs(Number(perShareDriftBps.min))).toBeLessThan(100);
+    expect(Math.abs(Number(perShareDriftBps.max))).toBeLessThan(100);
+  });
+
+  it("calls a run with tens of bps of median drift unstable", async () => {
+    const { verdict } = (await runDrifting()).report.referencePriceStability;
+    expect(verdict).toBe("unstable");
   });
 });

@@ -15,6 +15,15 @@ Status vocabulary: `VERIFIED`, `PARTIAL`, `GATED`, `NOT IMPLEMENTED`, `DEVIATED`
 
 - Local Postgres major version (17) must be re-confirmed against Supabase once those projects
   are created (DEC-002).
+- The `tokenToShareRatio` list-vs-profile cross-check covers only multi-representation
+  underlyings. `tools/probe/src/pipeline.ts` iterates it over `multiRepTickers`, so in
+  probe_run `634f558e-d77d-42eb-aed3-b5e33ca84f1b` it ran for 40 of 448 tickers - the other
+  408, every single-platform underlying, received no `/rwa/underlying-profile` call and no
+  ratio comparison. A ratio disagreement on a single-platform token would not be detected
+  today. Recorded while investigating DEC-026; no fix is approved and none is implemented.
+  Widening it to every ticker costs one profile call per representation (~485 in that run,
+  against the 80 actually made), so the decision is a rate-limit and runtime trade-off, not
+  a code change alone.
 
 ## Incidents
 

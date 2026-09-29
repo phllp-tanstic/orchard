@@ -274,3 +274,38 @@ Was docs behavior accurate?: No - see above.
 Suggested fix: implemented (this commit).
 Evidence ref: probe_run_id = 300b6de4-229b-4859-a689-789c5f49e811 (5 provider_call rows, endpoint LIKE '%/rwa/price%')
 ```
+
+### 2026-09-29 (DEC-026 - unresolved: referencePrice means different things on /rwa/tokens and /rwa/price)
+
+```text
+Timestamp: 2026-09-28T22:51:09.210Z (tokens list) / 2026-09-28T22:51:50.340Z and 22:51:52.734Z (price)
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/rwa-data (Get RWA Token List; Get RWA Token Price)
+Operation: comparison of the stored tokenPrice/referencePrice pair on /rwa/tokens against the pair on /rwa/price, for ondo 0xfc263946439b0d802bf4c5a6fcd34e2885259f91 (KLAC) and ondo 0x5a9d924fc336a5ec8cf3b1909aa660533b50b015 (ENLV)
+Goal: -
+Expected: a field named referencePrice to carry the same quantity on both endpoints
+Observed: it does not. Writing P for the per-underlying-share price and R for tokenToShareRatio, both endpoints satisfy tokenPrice / referencePrice == R internally, but the /rwa/price pair sits one division by R below the /rwa/tokens pair.
+
+  KLAC, R = 10.026064925604903975
+    /rwa/tokens  tokenPrice     = 19031.667350173495423663139671929525   (= R x 1898.219041208259)
+    /rwa/tokens  referencePrice = 1898.219041208259                      (= P)
+    /rwa/price   tokenPrice     = 1898.219041208258939443                (= P, re-read 41s later)
+    /rwa/price   referencePrice = 189.328421                             (= P / R)
+    1898.219041208258939443 / 189.328421 = 10.0260649256 = R
+
+  ENLV, R = 0.066667
+    /rwa/tokens  tokenPrice     = 0.002318440962013516                   (= R x 0.034776440548)
+    /rwa/tokens  referencePrice = 0.034776440548                         (= P)
+    /rwa/price   tokenPrice     = 0.034776440548                         (= P, byte-identical here)
+    /rwa/price   referencePrice = 0.521644                               (= P / R)
+    0.034776440548 / 0.521644 = 0.066667 = R
+
+So /rwa/tokens referencePrice and /rwa/price tokenPrice are the same quantity P, while /rwa/price referencePrice is P / R - a third scaling that no doc page describes. Which of the two endpoints is the intended convention is not determinable from the data; neither doc page states the unit of either field.
+HTTP/provider code: 200 / "0" (all source calls)
+Latency: -
+Workaround: DEC-026 leaves /rwa/price referencePrice unused. tools/probe/src/pipeline.ts compares /rwa/tokens referencePrice (T1) against /rwa/price tokenPrice (T2) instead, which is a same-unit comparison.
+Was docs behavior accurate?: No - the same field name carries two different scalings across the two endpoints, and neither page documents the unit.
+Suggested fix: - (unresolved; not addressed by DEC-026)
+Evidence ref: evidence.provider_call.id = 9709995e-febc-46d2-b7ae-6b0274ea5c56 (tokens list), 2ea05d39-e84c-45a5-9248-6ed032400459 (KLAC price), d45f19b5-2f8f-41dc-826b-424bc6b2143b (ENLV price), probe_run_id = 634f558e-d77d-42eb-aed3-b5e33ca84f1b
+```

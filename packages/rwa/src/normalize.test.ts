@@ -4,6 +4,7 @@ import {
   bpsDifference,
   parseDecimal,
   ratioAnomalyReason,
+  tryParseDecimal,
 } from "./normalize.js";
 
 describe("impliedPricePerShare", () => {
@@ -112,5 +113,21 @@ describe("ratioAnomalyReason", () => {
     ]) {
       expect(() => ratioAnomalyReason(bad)).not.toThrow();
     }
+  });
+});
+
+describe("tryParseDecimal", () => {
+  it("parses a normal decimal string", () => {
+    expect(tryParseDecimal("123.45")?.toString()).toBe("123.45");
+  });
+
+  it("returns undefined instead of throwing on a non-numeric value", () => {
+    expect(tryParseDecimal("not-a-number")).toBeUndefined();
+    expect(tryParseDecimal("")).toBeUndefined();
+  });
+
+  it("returns undefined for a non-finite value rather than a NaN/Infinity Decimal", () => {
+    expect(tryParseDecimal("NaN")).toBeUndefined();
+    expect(tryParseDecimal("Infinity")).toBeUndefined();
   });
 });
