@@ -17,6 +17,7 @@ import {
   quoteRouteSchema,
   supportedChainDataSchema,
   swapDataSchema,
+  swapPayloadOf,
 } from "./trading-schemas.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -118,6 +119,47 @@ describe("swapDataSchema", () => {
     const tx = { ...(fixture["tx"] as Record<string, unknown>) };
     delete tx["data"];
     expect(() => swapDataSchema.parse({ ...fixture, tx })).toThrow(ZodError);
+  });
+});
+
+describe("swapDataSchema: the live shape carries BOTH keys, one of them null", () => {
+  // Confirmed live 2026-09-30: a SWAP-mode route returns tx populated AND
+  // rfq: null on the same payload. Declaring these merely .optional() made
+  // every real response fail to parse, so this is pinned.
+  it("parses a SWAP payload whose rfq is null", () => {
+    const parsed = swapDataSchema.parse({ ...loadFixtures().swapDataTx, rfq: null });
+    expect(parsed.tx?.data).toBe("0xdeadbeef");
+    expect(parsed.rfq).toBeNull();
+    const payload = swapPayloadOf(parsed);
+    expect(payload.kind).toBe("tx");
+    expect(payload.rfq).toBeUndefined();
+    expect(payload.tx?.data).toBe("0xdeadbeef");
+  });
+
+  it("parses an RFQ payload whose tx is null", () => {
+    const parsed = swapDataSchema.parse({ ...loadFixtures().swapDataRfq, tx: null });
+    expect(parsed.tx).toBeNull();
+    const payload = swapPayloadOf(parsed);
+    expect(payload.kind).toBe("rfq");
+    expect(payload.tx).toBeUndefined();
+    expect(payload.rfq?.vendor).toBe("SyntheticRfqVendor");
+  });
+
+  it("parses a payload whose routerResult is null", () => {
+    expect(() =>
+      swapDataSchema.parse({ ...loadFixtures().swapDataTx, routerResult: null }),
+    ).not.toThrow();
+  });
+
+  it("reports both and neither as their own outcomes rather than guessing", () => {
+    const fixtures = loadFixtures();
+    const both = swapDataSchema.parse({
+      ...fixtures.swapDataTx,
+      rfq: fixtures.swapDataRfq["rfq"],
+    });
+    expect(swapPayloadOf(both).kind).toBe("both");
+    const neither = swapDataSchema.parse({ executionMode: "SWAP", tx: null, rfq: null });
+    expect(swapPayloadOf(neither).kind).toBe("neither");
   });
 });
 

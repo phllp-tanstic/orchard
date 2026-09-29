@@ -13,6 +13,7 @@ import {
   quoteRouteSchema,
   simulateDataSchema,
   swapDataSchema,
+  swapPayloadOf,
   TRADING_DOCUMENTED_CODES,
   type QuoteRoute,
   type RequestSpec,
@@ -393,23 +394,25 @@ export async function runQuoteFeasibilityProbe(
         continue;
       }
 
-      const hasTx = swapData.tx !== undefined;
-      const hasRfq = swapData.rfq !== undefined;
-      if (hasTx) swapTxPayloads += 1;
-      if (hasRfq) swapRfqPayloads += 1;
+      // /swap sends BOTH tx and rfq keys, the inapplicable one as JSON null
+      // (confirmed live 2026-09-30), so presence is not enough - read the leg
+      // through swapPayloadOf, which collapses null to absent.
+      const payload = swapPayloadOf(swapData);
+      if (payload.tx !== undefined) swapTxPayloads += 1;
+      if (payload.rfq !== undefined) swapRfqPayloads += 1;
       attempt.swap = {
         attempted: true,
         succeeded: true,
-        payload: hasTx && hasRfq ? "both" : hasTx ? "tx" : hasRfq ? "rfq" : "neither",
+        payload: payload.kind,
         ...(swapData.executionMode !== undefined ? { executionMode: swapData.executionMode } : {}),
-        ...(swapData.tx !== undefined ? { txFields: Object.keys(swapData.tx).sort() } : {}),
-        ...(swapData.rfq !== undefined ? { rfqFields: Object.keys(swapData.rfq).sort() } : {}),
-        ...(swapData.rfq !== undefined ? { rfqVendor: swapData.rfq.vendor } : {}),
+        ...(payload.tx !== undefined ? { txFields: Object.keys(payload.tx).sort() } : {}),
+        ...(payload.rfq !== undefined ? { rfqFields: Object.keys(payload.rfq).sort() } : {}),
+        ...(payload.rfq !== undefined ? { rfqVendor: payload.rfq.vendor } : {}),
       };
 
       // --- step 4: simulate a real tx when there is one ---
-      if (swapData.tx !== undefined) {
-        const tx = swapData.tx;
+      if (payload.tx !== undefined) {
+        const tx = payload.tx;
         const sim = await attemptSimulate(deps, "swapTx", rep.binanceChainId, {
           from: tx.from,
           to: tx.to,
@@ -430,12 +433,12 @@ export async function runQuoteFeasibilityProbe(
             `simulate (swapTx) returned no status for ${rep.platformId} ${rep.tokenContractAddress} at $${usd}: ${sim.attempt.error ?? "unknown"}`,
           );
         }
-      } else if (swapData.rfq !== undefined) {
+      } else if (payload.rfq !== undefined) {
         // --- step 5: RFQ path. typedDataToSign is EIP-712, not an evmTx, so
         // it is never sent to simulate. The approve leg is the only real
         // calldata available - this is the empirical test of whether
         // "simulate the approve leg" works at all.
-        const rfqVendor = swapData.rfq.vendor;
+        const rfqVendor = payload.rfq.vendor;
         let approveCalldata: { to: string; data: string } | undefined;
         try {
           const res = await deps.client.request<unknown>(

@@ -201,17 +201,51 @@ export const routerResultSchema = z
   })
   .passthrough();
 
+/**
+ * Confirmed live 2026-09-30: /swap returns BOTH `tx` and `rfq` as keys on
+ * every response, with the one that does not apply set to JSON `null` - for a
+ * SWAP-mode route, `tx` is populated and `rfq` is null. The doc page describes
+ * them as if only the applicable one is present, so both are nullable here.
+ * Treating them as merely optional made every real payload fail to parse.
+ *
+ * Callers must test for null, not just for presence - `swapPayloadOf` below
+ * does that, and is the only supported way to read which leg came back.
+ */
 export const swapDataSchema = z
   .object({
-    routerResult: routerResultSchema.optional(),
-    tx: swapTxSchema.optional(),
+    routerResult: routerResultSchema.nullable().optional(),
+    tx: swapTxSchema.nullable().optional(),
     // Open string, not an enum - see DOCUMENTED_EXECUTION_MODES.
     executionMode: z.string().optional(),
-    rfq: swapRfqSchema.optional(),
+    rfq: swapRfqSchema.nullable().optional(),
   })
   .passthrough();
 
 export type SwapData = z.infer<typeof swapDataSchema>;
+
+/**
+ * Normalizes a /swap payload to the leg that is actually present, collapsing
+ * the provider's null-for-the-other-one convention. "both" and "neither" are
+ * kept as distinct outcomes rather than being guessed at, so an unexpected
+ * response is visible in a report instead of silently read as one leg.
+ */
+export function swapPayloadOf(data: SwapData): {
+  kind: "tx" | "rfq" | "both" | "neither";
+  tx: SwapTx | undefined;
+  rfq: SwapRfq | undefined;
+} {
+  const tx = data.tx ?? undefined;
+  const rfq = data.rfq ?? undefined;
+  const kind =
+    tx !== undefined && rfq !== undefined
+      ? "both"
+      : tx !== undefined
+        ? "tx"
+        : rfq !== undefined
+          ? "rfq"
+          : "neither";
+  return { kind, tx, rfq };
+}
 
 // --- GET /api/v1/dex/aggregator/approve-transaction ---
 

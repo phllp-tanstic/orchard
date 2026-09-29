@@ -49,6 +49,7 @@ export {
   supportedChainDataSchema,
   supportedChainSchema,
   swapDataSchema,
+  swapPayloadOf,
   swapRfqSchema,
   swapTxSchema,
   tradingTokenInfoSchema,

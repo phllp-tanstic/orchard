@@ -60,15 +60,22 @@ function quoteRoute(overrides: Record<string, unknown> = {}): Record<string, unk
   };
 }
 
+/**
+ * The real live shape: /swap sends BOTH keys, the inapplicable one as JSON
+ * null (confirmed 2026-09-30). The stubs mirror that so a regression to
+ * presence-only checks is caught here.
+ */
 const SWAP_TX_PAYLOAD = {
   executionMode: "SWAP",
   routerResult: { binanceChainId: CHAIN },
   tx: { from: PROBE_WALLET, to: "0xrouter", data: "0xcafe", value: "0", gas: "250000" },
+  rfq: null,
 };
 
 const SWAP_RFQ_PAYLOAD = {
   executionMode: "RFQ",
   routerResult: { binanceChainId: CHAIN },
+  tx: null,
   rfq: { vendor: "SomeRfqVendor", txType: "EIP712", typedDataToSign: "{}" },
 };
 
@@ -224,6 +231,26 @@ describe("runQuoteFeasibilityProbe: happy path", () => {
     }
     // Including the stale-quoteId reuse call in the TTL observation.
     expect(result.report.probeConfig.slippagePercent).toBe("0.5");
+  });
+
+  it("treats a null rfq as absent and still simulates the tx leg", async () => {
+    const stub = makeClient({}, TOKENS);
+    const evidence = makeEvidence();
+    const result = await runQuoteFeasibilityProbe(baseDeps(stub.client, evidence.ops));
+    expect(result.report.results[0]!.attempts[0]!.swap?.payload).toBe("tx");
+    expect(result.report.aggregate.swapRfqPayloads).toBe(0);
+    expect(result.report.aggregate.simulateAttempts).toBe(4);
+  });
+
+  it("records 'neither' when both legs come back null, without simulating", async () => {
+    const stub = makeClient(
+      { swap: () => ({ executionMode: "SWAP", tx: null, rfq: null }) },
+      TOKENS,
+    );
+    const evidence = makeEvidence();
+    const result = await runQuoteFeasibilityProbe(baseDeps(stub.client, evidence.ops));
+    expect(result.report.results[0]!.attempts[0]!.swap?.payload).toBe("neither");
+    expect(result.report.aggregate.simulateAttempts).toBe(0);
   });
 
   it("never calls order/submit or broadcast", async () => {
