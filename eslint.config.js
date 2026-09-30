@@ -14,6 +14,10 @@ export default [
       "**/.turbo/**",
       "reports/**",
       "evidence/raw/**",
+      // One-off investigation/assessment scripts. Never committed (.gitignore),
+      // so CI never sees them; ignoring them here keeps `eslint .` consistent
+      // with that policy instead of failing on files that cannot be pushed.
+      "scripts/scratch/**",
     ],
   },
   js.configs.recommended,

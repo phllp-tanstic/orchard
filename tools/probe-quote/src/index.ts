@@ -10,6 +10,7 @@ export type {
   QuoteAttempt,
   QuoteFeasibilityReport,
   RepresentationResult,
+  SampledRepresentation,
   SimulateAttempt,
   SimulatedLeg,
   TerminalStatus,

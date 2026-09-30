@@ -309,3 +309,80 @@ Was docs behavior accurate?: No - the same field name carries two different scal
 Suggested fix: - (unresolved; not addressed by DEC-026)
 Evidence ref: evidence.provider_call.id = 9709995e-febc-46d2-b7ae-6b0274ea5c56 (tokens list), 2ea05d39-e84c-45a5-9248-6ed032400459 (KLAC price), d45f19b5-2f8f-41dc-826b-424bc6b2143b (ENLV price), probe_run_id = 634f558e-d77d-42eb-aed3-b5e33ca84f1b
 ```
+
+### 2026-09-30 (DEC-031)
+
+```text
+Timestamp: 2026-09-30T00:41:50.000Z
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api (Build Swap Transaction, query parameters)
+Operation: GET /api/v1/dex/aggregator/swap (binanceChainId=56, fromTokenAddress=USDT, toTokenAddress=<tokenized stock>, userWalletAddress=<burn>, quoteId=<fresh>)
+Goal: Build a swap transaction from a quoted route using only the parameters the doc page marks required.
+Expected: The request to succeed. The doc page lists slippagePercent and autoSlippage BOTH as optional, and neither appears in its required set.
+Observed: Every such request is rejected: code 40001, msg "either slippagePercent or autoSlippage is required". 42 consecutive rejections across 14 quoted routes in one run, zero successes. Supplying slippagePercent=0.5 makes the identical request succeed.
+HTTP/provider code: 200 / 40001
+Latency: 474ms average across the 40001 responses
+Workaround: tools/probe-quote sends slippagePercent on every /swap call (default 0.5, overridable via PROBE_SLIPPAGE_PERCENT) and records the value in the report, since slippage determines the built tx minReceiveAmount.
+Was docs behavior accurate?: No - one of two parameters documented as optional is in fact mandatory. The docs do not state that at least one of the pair is required.
+Suggested fix: Document slippagePercent/autoSlippage as "exactly one required" rather than both optional.
+Evidence ref: evidence.provider_call.id = a1e72cb2-f30b-4a86-855a-4d468afa760a, a254c0de-4d98-4793-a91c-83cd2f49371d, probe_run_id = 322a8594-438c-4486-8a6b-9c726a70502c
+```
+
+```text
+Timestamp: 2026-09-30T00:02:10.000Z
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api (Get Aggregated Quote, error codes) and https://web3.binance.com/en/dev-docs/authentication (documented code list)
+Operation: GET /api/v1/dex/aggregator/quote (binanceChainId=56, fromTokenAddress=USDT, toTokenAddress=<tokenized stock>, amount=10/100/1000 USDT, userWalletAddress=<burn>)
+Goal: Quote a purchase of each sampled tokenized stock at three spend sizes.
+Expected: Either a quote, or a failure carrying one of the documented envelope codes (40001, 40101, 40102, 40103, 40104, 42900, 50000, 50001) or a documented Trading API code (40401 QUOTE_EXPIRED, 40462 SWAP_QUOTE_MISMATCH).
+Observed: Two codes outside every documented set, together accounting for every quote failure in the run - 107 of 288 attempts.
+  40374, msg "Insufficient liquidity for a quote. Please decrease the transaction amount or try again later." (39 responses)
+  40367, two distinct message forms (68 responses):
+    "Token <symbol> is currently in a non-trading session. Expected to open in 0d 13h 49m."
+    "The stock market is shifting its trading phase. Expected to open in 0d 0h 5m."
+  The symbol is sometimes absent from the 40367 text, leaving a double space ("Token  is currently...").
+  40367 is market-hours dependent: the same seeded sample produced 61 of 96 representations quoting at 00:02, versus 81 of 96 an hour earlier, differing only in how many underlyings were in a trading session.
+HTTP/provider code: 200 / 40367 and 200 / 40374
+Latency: 463ms average (40367), 688ms average (40374)
+Workaround: Both are treated as ordinary per-representation quote failures - recorded in the report and in incompleteReasons, never aborting the run. Neither is in NO_RETRY_CODES, so each is retried maxRetries times before being recorded.
+Was docs behavior accurate?: No - neither code appears in the authentication doc list or on the Trading API page. A caller cannot distinguish "no liquidity at this size" from "market closed" using any documented code.
+Suggested fix: Document 40367 and 40374, and state whether either is retryable. Both are permanent for the request as sent, so retrying wastes quota.
+Evidence ref: evidence.provider_call.id = 28a38b12-0e89-492e-a722-ed6911ba3a70 (40374), 27b83efb-69a5-4453-8143-4a2139592f32 (40367), probe_run_id = 1f42f52f-a9c8-463d-8bf9-a344758f3b6c
+```
+
+```text
+Timestamp: 2026-09-30T00:44:01.000Z
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/transaction-api (Simulate Transactions)
+Operation: POST /api/v1/dex/pre-transaction/simulate (binanceChainId=56, evmTx={from:<burn>, to:USDT, value:"0", data:<approve calldata from GET /api/v1/dex/aggregator/approve-transaction>})
+Goal: DEC-031 item 1 - determine whether the ERC-20 approve leg alone simulates from a zero-balance address, given that the swap-tx leg does not.
+Expected: Unknown. The doc page does not state whether a simulation requires the sender to hold balance or to have granted an allowance.
+Observed: The approve leg simulates successfully from a zero-balance address. 12 of 12 sampled calls returned data.status "SUCCESS", data.failReason null, and exactly one allowanceChanges entry showing preAmount "0" -> postAmount equal to the approved amount, for owner 0x...dEaD and spender 0xB44446b0c8E56988c34f7Ff73Ae904982b5FdDA5. The same address swap-tx simulation returns status "FAILED", failReason "execution reverted: BEP20: transfer amount exceeds allowance", on 181 of 181 attempts. So the endpoint executes against real chain state, and the two legs differ because an approve requires no balance while a transferFrom does.
+  Sample caveat: the approve is on the SPEND token, so its calldata depends only on (spend token, spender, amount) and not on which tokenized stock is being bought. All 181 successful quotes in the source run named a single approveTarget (0xB44446b0...FdDA5). The 12 sampled calls therefore covered only 3 genuinely distinct transactions, one per spend size.
+HTTP/provider code: 200 / 0 (all 24 calls: 12 approve-transaction, 12 simulate)
+Latency: -
+Workaround: -
+Was docs behavior accurate?: Partly - the documented request and response shapes matched exactly. The page is silent on the balance/allowance precondition, which is the fact that determines whether a simulation is meaningful.
+Suggested fix: State explicitly that simulation executes against current chain state, and that a transfer-bearing transaction from an address without balance or allowance will report FAILED.
+Evidence ref: evidence.provider_call.id = 93d5aa4a-a299-4636-877a-dc006fcb6d79 (approve-transaction), 69ba1d70-07d6-47dd-86b7-c44cb0d51108 (simulate, SUCCESS), probe_run_id = ef176412-9d7e-45a0-90f7-745518c7ef7f (assessment), source probe_run_id = 1f42f52f-a9c8-463d-8bf9-a344758f3b6c
+```
+
+```text
+Timestamp: 2026-09-30T00:38:00.000Z
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/transaction-api (Simulate Transactions, request schema)
+Operation: Documentation re-read (DEC-031 item 2), no API call.
+Goal: Determine whether Simulate Transactions documents any state-override, balance-override, allowance-override, account-override, or fork-at-block capability that would let a zero-balance address simulate a transfer-bearing transaction.
+Expected: -
+Observed: No override capability of any kind is documented. The request schema is binanceChainId plus exactly one of evmTx {from, to, value, data}, solTx {base64Tx, address}, or tronTx {from, txType, triggerSmartContractParams | transferContractParams}. There is no state, balance, allowance or account override field, no block-number or fork-at-block pinning, and no simulation-options object. The page is also silent on whether the sender must hold balance or have granted allowance.
+HTTP/provider code: -
+Latency: -
+Workaround: None available through this endpoint. Simulating a transfer-bearing transaction to a non-FAILED status requires an address that actually holds the spend token and has approved the spender - a funded address, which is a DEC-028 decision rather than a code change.
+Was docs behavior accurate?: Yes for what it describes - the four evmTx fields are exactly what the endpoint accepts. The absence of overrides is a capability gap, not a documentation error.
+Suggested fix: -
+Evidence ref: - (documentation observation, re-fetched 2026-09-30. Related live evidence: probe_run_id = ef176412-9d7e-45a0-90f7-745518c7ef7f)
+```
