@@ -1,0 +1,97 @@
+{
+  "_note": "SYNTHETIC envelopes reproducing the EXACT wire shape the Binance Web3 API returns, for DEC-030. The structure (msg / code / data / success / timestamp) and the numeric type of `code` were observed live on probe_run 1f42f52f-a9c8-463d-8bf9-a344758f3b6c (2026-09-30, chain 56); jsonb_typeof(response_json->'code') is 'number' for every recorded call. Timestamps are invented and the auth/transient entries are constructed rather than captured (this project has never deliberately triggered an auth failure), hence SYNTHETIC_ rather than DOC_EXAMPLE_. No secrets, wallet addresses, or order ids - envelope scaffolding only. Never imported from src.",
+
+  "_whyItMatters": "`code` arrives as a JSON number while the docs present the codes as strings. Every existing client test used string codes, so the retry decision was never exercised against the real shape: NO_RETRY_CODES silently never matched and auth failures were retried maxRetries times.",
+
+  "success": {
+    "msg": "success",
+    "code": 0,
+    "data": { "ok": true },
+    "success": true,
+    "timestamp": 1790725150965
+  },
+
+  "authNoRetry": [
+    {
+      "msg": "Invalid signature",
+      "code": 40101,
+      "data": null,
+      "success": false,
+      "timestamp": 1790725150966
+    },
+    {
+      "msg": "Invalid API key",
+      "code": 40102,
+      "data": null,
+      "success": false,
+      "timestamp": 1790725150967
+    },
+    {
+      "msg": "Request timestamp expired or nonce replayed",
+      "code": 40104,
+      "data": null,
+      "success": false,
+      "timestamp": 1790725150968
+    }
+  ],
+
+  "transientRetryable": [
+    {
+      "msg": "Internal server error",
+      "code": 50000,
+      "data": null,
+      "success": false,
+      "timestamp": 1790725150969
+    },
+    {
+      "msg": "Service temporarily unavailable",
+      "code": 50001,
+      "data": null,
+      "success": false,
+      "timestamp": 1790725150970
+    }
+  ],
+
+  "observedLive": [
+    {
+      "_seenOn": "GET /api/v1/dex/aggregator/swap, stale quoteId reuse after 35s",
+      "msg": "Quote expired",
+      "code": 40401,
+      "data": null,
+      "success": false,
+      "timestamp": 1790725150971
+    },
+    {
+      "_seenOn": "GET /api/v1/dex/aggregator/quote, thin-liquidity token",
+      "msg": "Insufficient liquidity for a quote. Please decrease the transaction amount or try again later.",
+      "code": 40374,
+      "data": null,
+      "success": false,
+      "timestamp": 1790725150972
+    },
+    {
+      "_seenOn": "GET /api/v1/dex/aggregator/quote, outside the underlying's trading session",
+      "msg": "Token  is currently in a non-trading session. Expected to open in 0d 13h 43m.",
+      "code": 40367,
+      "data": null,
+      "success": false,
+      "timestamp": 1790725150973
+    },
+    {
+      "_seenOn": "GET /api/v1/dex/aggregator/swap, neither slippagePercent nor autoSlippage sent",
+      "msg": "either slippagePercent or autoSlippage is required",
+      "code": 40001,
+      "data": null,
+      "success": false,
+      "timestamp": 1790725150974
+    }
+  ],
+
+  "undocumented": {
+    "msg": "who knows",
+    "code": 49999,
+    "data": null,
+    "success": false,
+    "timestamp": 1790725150975
+  }
+}
