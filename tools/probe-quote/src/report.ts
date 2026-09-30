@@ -86,6 +86,16 @@ export interface QuoteAttempt {
   simulate?: SimulateAttempt;
 }
 
+/** One sampled representation, identified well enough to look it up on-chain. */
+export interface SampledRepresentation {
+  platformId: string;
+  underlyingTicker: string;
+  tokenSymbol: string;
+  binanceChainId: string;
+  tokenContractAddress: string;
+  sampleGroup: "multi" | "single";
+}
+
 export interface RepresentationResult {
   platformId: string;
   underlyingTicker: string;
@@ -139,6 +149,12 @@ export interface QuoteFeasibilityReport {
     singleRepresentationCount: number;
     totalRepresentations: number;
     shortfalls: { platformId: string; requested: number; available: number }[];
+    /**
+     * The exact sample set, so a run is traceable to specific tokens without
+     * scanning all 96 per-representation blocks. Denormalized deliberately: the
+     * same identity fields also appear on every `results[]` entry.
+     */
+    sampledRepresentations: SampledRepresentation[];
     /** Universe the sample was drawn from, for context. */
     universeRepresentations: number;
     universeUnderlyings: number;
@@ -261,6 +277,19 @@ export function renderMarkdown(report: QuoteFeasibilityReport): string {
   lines.push(
     `- Drawn from a universe of ${report.sampling.universeRepresentations} representations / ${report.sampling.universeUnderlyings} underlyings`,
   );
+  lines.push("");
+  lines.push("### Sampled representations");
+  lines.push("");
+  lines.push("| # | Platform | Ticker | Symbol | Chain | Token contract | Group |");
+  lines.push("| --- | --- | --- | --- | --- | --- | --- |");
+  report.sampling.sampledRepresentations.forEach((s, i) => {
+    const address = "`" + s.tokenContractAddress + "`";
+    lines.push(
+      `| ${i + 1} | ${s.platformId} | ${s.underlyingTicker} | ${s.tokenSymbol} | ` +
+        `${s.binanceChainId} | ${address} | ${s.sampleGroup} |`,
+    );
+  });
+  lines.push("");
   for (const s of report.sampling.shortfalls) {
     lines.push(
       `- SHORTFALL: ${s.platformId} had only ${s.available} single-representation tickers, ${s.requested} requested`,

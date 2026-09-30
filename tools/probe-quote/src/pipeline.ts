@@ -572,6 +572,17 @@ export async function runQuoteFeasibilityProbe(
       singleRepresentationCount: sample.singleRepresentation.length,
       totalRepresentations: sample.all.length,
       shortfalls: sample.shortfalls,
+      sampledRepresentations: sample.all.map((rep) => {
+        const key = rep.binanceChainId + ":" + rep.tokenContractAddress;
+        return {
+          platformId: rep.platformId,
+          underlyingTicker: rep.underlyingTicker,
+          tokenSymbol: symbolByKey.get(key) ?? "(unknown)",
+          binanceChainId: rep.binanceChainId,
+          tokenContractAddress: rep.tokenContractAddress,
+          sampleGroup: multiKeys.has(key) ? ("multi" as const) : ("single" as const),
+        };
+      }),
       universeRepresentations: universe.length,
       universeUnderlyings: groups.size,
     },
@@ -830,6 +841,7 @@ function emptyReport(
       singleRepresentationCount: 0,
       totalRepresentations: 0,
       shortfalls: [],
+      sampledRepresentations: [],
       universeRepresentations: 0,
       universeUnderlyings: 0,
     },

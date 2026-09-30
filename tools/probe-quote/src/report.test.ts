@@ -30,6 +30,24 @@ function report(overrides: Partial<QuoteFeasibilityReport> = {}): QuoteFeasibili
       singleRepresentationCount: 3,
       totalRepresentations: 5,
       shortfalls: [],
+      sampledRepresentations: [
+        {
+          platformId: "ondo",
+          underlyingTicker: "AAA",
+          tokenSymbol: "AAAon",
+          binanceChainId: "56",
+          tokenContractAddress: "0xondoaaa",
+          sampleGroup: "multi",
+        },
+        {
+          platformId: "bstock",
+          underlyingTicker: "BBB",
+          tokenSymbol: "BBBB",
+          binanceChainId: "56",
+          tokenContractAddress: "0xbstbbb",
+          sampleGroup: "single",
+        },
+      ],
       universeRepresentations: 485,
       universeUnderlyings: 445,
     },
@@ -243,6 +261,21 @@ describe("renderMarkdown", () => {
     );
     expect(md).toContain("Simulate attempts returning a status: 0/3; non-failing status: 0");
     expect(md).toContain("- approveCalldata: attempted 3, returned a status 0, non-failing 0");
+  });
+
+  it("renders a sampled-representations table so the run traces to specific tokens", () => {
+    const md = renderMarkdown(report());
+    expect(md).toContain("### Sampled representations");
+    expect(md).toContain("| # | Platform | Ticker | Symbol | Chain | Token contract | Group |");
+    // Platform AND contract address for every sampled representation - the
+    // traceability DEC-031 item 3 asked for.
+    expect(md).toContain("| 1 | ondo | AAA | AAAon | 56 | `0xondoaaa` | multi |");
+    expect(md).toContain("| 2 | bstock | BBB | BBBB | 56 | `0xbstbbb` | single |");
+  });
+
+  it("keeps platformId and tokenContractAddress on every per-representation block too", () => {
+    const md = renderMarkdown(report());
+    expect(md).toContain("### ondo AAAon (AAA) `0xondoaaa` [multi]");
   });
 
   it("reports shortfalls and unknown fields", () => {
