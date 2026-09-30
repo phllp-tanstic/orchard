@@ -32,11 +32,13 @@ Simulation (M3) and execution (M5) are out of scope.
 ## 3. Scope
 
 ### T1. packages/execution: domain and normalization
+
 - Types per blueprint section 6: CandidateRoute, RouteDecision, with exact decimal strings.
 - Normalization in decimal.js only. No floats anywhere.
 - Functions: normalizeShares, effectivePricePerShare, quoteAge, eligibility(candidate, policy).
 
 ### T2. Eligibility policy (configuration, never hardcoded)
+
 - Hard rejections, each with a stable reason code: QUOTE_ERROR (carry provider code), NON_TRADING_SESSION,
   INVALID_RATIO, WRONG_CHAIN, UNSUPPORTED_TOKEN, QUOTE_STALE, PRICE_IMPACT_EXCEEDS_MAX,
   NULL_IDENTITY (the 3 excluded tokens), ASSET_TYPE_EXCLUDED (policy-driven).
@@ -47,15 +49,18 @@ Simulation (M3) and execution (M5) are out of scope.
   measured quote expiry is about 30s (quoteId reuse after 35s returned 40401, F001-B).
 
 ### T3. Ranking (deterministic, versioned)
+
 1. Highest normalizedShares for the fixed spend.
 2. Lower explicit fees (tradeFee plus estimateGasFee) where both candidates report them in the same unit.
 3. Fresher quote.
 4. Lower priceImpact.
 5. Tie-break: lexicographic tokenContractAddress.
+
 - algorithmVersion string on every RouteDecision. No weighted scores. No LLM.
 - Property tests: ranking is invariant to input order; identical inputs give identical output.
 
 ### T4. Orchestrator and persistence
+
 - run(ticker, spendAmount, policy): resolve representations from the RWA data the probe already
   fetches (reuse packages/rwa, no hardcoded tickers or addresses), quote each through the
   F001-B client with the configured read-only probe address (burn address, confirmed accepted),
@@ -69,6 +74,7 @@ Simulation (M3) and execution (M5) are out of scope.
   every rejection reason. Never a fallback price, never a silent substitution.
 
 ### T5. tools/route-probe and report
+
 - CLI: pnpm route:probe --ticker NVDA --amount 100 (amount in USDT, decimal).
 - Output reports/route-probe.json and rendered .md (MD generated from JSON only): every candidate,
   its normalized shares, effective price per share, rejection reasons, the ranking, the winner
