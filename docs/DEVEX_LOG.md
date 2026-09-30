@@ -386,3 +386,36 @@ Was docs behavior accurate?: Yes for what it describes - the four evmTx fields a
 Suggested fix: -
 Evidence ref: - (documentation observation, re-fetched 2026-09-30. Related live evidence: probe_run_id = ef176412-9d7e-45a0-90f7-745518c7ef7f)
 ```
+
+### 2026-09-30 (F002 normalization check, spec section 2)
+
+```text
+Timestamp: 2026-09-30T00:00:00.000Z
+Author: Claude (agent)
+Developer: -
+Docs URL/page: docs/specs/F002-spec.md section 2 (verified facts) and https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/rwa-data (Get RWA Token List: tokenPrice, referencePrice, tokenToShareRatio)
+Operation: GET /api/v1/dex/market/rwa/tokens (both platforms) then GET /api/v1/dex/aggregator/quote (binanceChainId=56, fromTokenAddress=USDT, amount=100 USDT, userWalletAddress=<burn>) for tokens chosen by tokenToShareRatio. Read-only, nothing signed.
+Goal: F002 spec section 2 requires confirming normalizedShares = toTokenAmount * tokenToShareRatio against a live quote for one 1:1 token and one non-1:1 token BEFORE the engine relies on it.
+Expected: For a correct normalization, the effective price per underlying share derived from a live quote should land on /rwa/tokens referencePrice, which F001-A treats as the per-underlying-share price.
+Observed: The formula is refuted by live quotes, by exactly the ratio factor. Two hypotheses were compared against referencePrice for the same quote:
+  H1 (spec): shares = (toTokenAmount / 10^decimals) * tokenToShareRatio
+  H2:        tokens = (toTokenAmount / 10^decimals), no ratio multiplication
+  ratio far from 1 (decisive, probe_run bfb33c67-4ce8-491d-8006-780f2ccc0d05):
+    ondo KLACon, ratio 10.026064925604903975: H1 -8996.9 bps vs referencePrice, H2 +56.9 bps
+    ondo PPLTon, ratio 10:                    H1 -9000.2 bps,                   H2 -2.0 bps
+    ondo NFLXon, ratio 10:                    H1 -8999.5 bps,                   H2 +4.6 bps
+  ratio at or near 1 (non-discriminating, probe_run 09a1ecf8-c7de-44a9-ba5c-d93e3f4b1600):
+    ondo AALon, ratio exactly 1:              H1 = H2 = -0.51 bps
+    ondo EEMon, ratio 1.013664147460543285:   H1 -125.5 bps,                    H2 +9.5 bps
+  H2 is consistent with all 5 observations; H1 is consistent only with the two whose ratio is within 1.4% of 1, where the two hypotheses are indistinguishable from ordinary spread.
+  tokenPrice / referencePrice equalled tokenToShareRatio exactly on all three far-from-1 tokens (10.026064925604903975, 10, 10), so the arithmetic half of the spec statement holds. What does not hold is the inference drawn from it. The live market price per token tracks referencePrice, not tokenPrice.
+  Independent economic cross-check, no API needed: PPLT is a platinum ETF trading near USD 155. referencePrice is 155.08416 and tokenPrice is 1550.8416. Under the spec reading, USD 100 would buy 6.449 shares of a USD 155 asset, i.e. about USD 1000 of exposure for USD 100. That is impossible, so one PPLTon cannot represent 10 PPLT shares.
+  Conclusion: on /rwa/tokens, referencePrice behaves as the market price of ONE TOKEN and tokenPrice is that value scaled up by tokenToShareRatio. tokenToShareRatio therefore does not mean "shares represented by one token" in the direction F002 section 2 assumes. The correct per-share unit and the true meaning of tokenToShareRatio are NOT determined by this check; only the spec formula is refuted.
+  This lands on an already-recorded open risk: DEC-026 logged that the unit of referencePrice is inconsistent between /rwa/tokens and /rwa/price and that neither doc page states the unit of either field.
+HTTP/provider code: 200 / 0 for every successful quote; 200 / 40367 for ondo ENLVon (non-trading session, skipped as a normal outcome)
+Latency: -
+Workaround: None applied. F002 spec section 7 requires stopping rather than adjusting the formula, so implementation of T1-T5 stopped at this gate and no normalization code was written.
+Was docs behavior accurate?: The RWA data doc page does not state the unit of tokenPrice, referencePrice or tokenToShareRatio, which is what allowed two contradictory readings to look equally defensible. The provider fields are self-consistent; the documentation is silent on their units.
+Suggested fix: Document the unit of tokenPrice, referencePrice and tokenToShareRatio explicitly, and state which one is the executable market price per token.
+Evidence ref: evidence.provider_call.id = 56c5e944-e892-4e3c-b4c3-d6a92d0d6462 (first far-from-1 quote), 85c0c6bd-ae4f-4866-bf04-98924680dcb3 (first 1:1 quote); probe_run_id = bfb33c67-4ce8-491d-8006-780f2ccc0d05 (discriminator) and 09a1ecf8-c7de-44a9-ba5c-d93e3f4b1600 (initial check). Computed rows in reports/f002-normalization-{confirmation,discriminator}.json (git-ignored).
+```
