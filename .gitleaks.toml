@@ -22,10 +22,14 @@ regex = '''(?i)DATABASE_URL["']?[ \t]*[=:][ \t]*["']?postgres(?:ql)?://[^:@/\s"'
 keywords = ["database_url"]
 
 [allowlist]
-description = "Variable names with no value (env templates, captured by the generic rule across a newline), and the one synthetic test-fixture secret value (DEC-013 A2: exact-value allowlisting only, no path-based exemption)"
+description = "Variable names with no value (env templates, captured by the generic rule across a newline), the one synthetic test-fixture secret value, and public on-chain contract addresses the generic rule mistakes for API keys because they sit next to an identifier containing 'token' (DEC-013 A2: exact-value allowlisting only, no path-based exemption)"
 regexTarget = "secret"
 regexes = [
   '''^BINANCE_WEB3_[A-Z_]+=$''',
   '''^DATABASE_URL=$''',
   '''^SYNTHETIC_TEST_SECRET_0123456789$''',
+  # USDT on BSC, the F001-B probe spend token. A public contract address
+  # anyone can read on-chain, not a credential - and never a substitute for
+  # one: it grants nothing. Allowlisted by exact value only.
+  '''^0x55d398326f99059fF775485246999027B3197955$''',
 ]

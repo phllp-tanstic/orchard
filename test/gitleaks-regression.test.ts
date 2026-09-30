@@ -133,6 +133,35 @@ describe("gitleaks regression (DEC-013 A2: exact-value allowlist, no path allowl
     expect(result.leaksFound).toBe(false);
   });
 
+  it("allowlists the public USDT-on-BSC contract address by exact value only", () => {
+    workDir = mkdtempSync(join(tmpdir(), "gitleaks-usdt-"));
+    mkdirSync(join(workDir, "src"), { recursive: true });
+    writeFileSync(
+      join(workDir, "src", "spend.ts"),
+      `const DEFAULT_SPEND_TOKEN_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";\n`,
+    );
+
+    expect(scanDir(workDir).leaksFound).toBe(false);
+  });
+
+  it("does not extend that exemption to any other address-shaped value", () => {
+    // The entry is anchored to one exact address. A different 0x value in the
+    // same position must still be scanned, so the exemption can never widen
+    // into "any hex blob next to a token-ish identifier".
+    workDir = mkdtempSync(join(tmpdir(), "gitleaks-otheraddr-"));
+    mkdirSync(join(workDir, "src"), { recursive: true });
+    // Built from parts (never a contiguous literal in this source file) so
+    // this test file does not itself trip the rule it is testing - same
+    // reason as the DATABASE_URL case below.
+    const otherAddress = ["0xAbCd1234567890fEdCbA", "0987654321aAbBcCdDeE"].join("");
+    writeFileSync(
+      join(workDir, "src", "spend.ts"),
+      `const DEFAULT_SPEND_TOKEN_ADDRESS = "${otherAddress}";\n`,
+    );
+
+    expect(scanDir(workDir).leaksFound).toBe(true);
+  });
+
   it("flags a fake DATABASE_URL with an embedded password", () => {
     workDir = mkdtempSync(join(tmpdir(), "gitleaks-dburl-"));
     writeFileSync(

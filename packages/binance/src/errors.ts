@@ -20,8 +20,16 @@ export type DocumentedCode = (typeof DOCUMENTED_CODES)[number];
 /** Codes for which a retry can never succeed (auth/replay failures). */
 export const NO_RETRY_CODES: ReadonlySet<DocumentedCode> = new Set(["40101", "40102", "40104"]);
 
+/**
+ * The envelope as it arrives on the wire. `code` is declared `string | number`
+ * because the provider sends it as a JSON NUMBER (confirmed live 2026-09-30
+ * across every Trading, Transaction and RWA endpoint this project calls), while
+ * the docs present the codes as strings. Consumers must compare against
+ * `BinanceApiError.code`, which is normalized to a string - never against
+ * `envelope.code` directly.
+ */
 export interface ProviderEnvelope {
-  code: string;
+  code: string | number;
   message?: string;
   [key: string]: unknown;
 }
@@ -37,8 +45,14 @@ export class BinanceApiError extends Error {
       `Binance Web3 API error ${envelope.code}${envelope.message ? `: ${envelope.message}` : ""}`,
     );
     this.name = "BinanceApiError";
-    this.code = envelope.code;
-    this.documented = (DOCUMENTED_CODES as readonly string[]).includes(envelope.code);
+    // Normalized to a string at the boundary. The provider sends a JSON
+    // number, so comparing the raw value against the documented string codes
+    // silently never matched: `documented` was always false and
+    // `isRetryable()` always true, which meant even an auth failure
+    // (40101/40102/40104) was retried the full maxRetries times instead of
+    // failing fast. Confirmed live 2026-09-30.
+    this.code = String(envelope.code);
+    this.documented = (DOCUMENTED_CODES as readonly string[]).includes(this.code);
     this.httpStatus = httpStatus;
     this.envelope = envelope;
   }

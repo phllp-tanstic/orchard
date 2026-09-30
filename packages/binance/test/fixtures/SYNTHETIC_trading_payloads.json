@@ -1,0 +1,121 @@
+{
+  "_note": "SYNTHETIC payloads built from the field lists documented on the Binance Web3 Trading API and Transaction API doc pages (re-fetched 2026-09-29). Values are invented, not copied from a live response and not a doc example verbatim - hence SYNTHETIC_, not DOC_EXAMPLE_. Never imported from src; schema-drift tests only.",
+  "quoteData": [
+    {
+      "quoteId": "00000000000000000000000000000001",
+      "vendorName": "SyntheticVendor",
+      "binanceChainId": "56",
+      "fromTokenAmount": "10000000",
+      "toTokenAmount": "41234567890000000",
+      "tradeFee": "0.0123",
+      "estimateGasFee": "210000",
+      "priceImpactPercent": "0.04",
+      "router": "0xfrm--0xto",
+      "fromToken": {
+        "tokenContractAddress": "0xfrm",
+        "tokenSymbol": "SUSDT",
+        "tokenUnitPrice": "1.0001",
+        "decimal": "18",
+        "isHoneyPot": false,
+        "taxRate": "0"
+      },
+      "toToken": {
+        "tokenContractAddress": "0xto",
+        "tokenSymbol": "sEXA",
+        "tokenUnitPrice": "242.55",
+        "decimal": "18",
+        "isHoneyPot": false,
+        "taxRate": "0"
+      },
+      "dexRouterList": [
+        {
+          "dexProtocol": { "dexName": "SyntheticDex", "percent": "100" },
+          "fromTokenIndex": "0",
+          "toTokenIndex": "1"
+        }
+      ],
+      "executionMode": "RFQ",
+      "approveTarget": "0xspnd",
+      "isBest": true,
+      "feeAmount": null,
+      "feeToken": null,
+      "actualSwapAmount": "10000000"
+    }
+  ],
+  "swapDataRfq": {
+    "routerResult": {
+      "binanceChainId": "56",
+      "vendorName": "SyntheticVendor",
+      "fromTokenAmount": "10000000",
+      "toTokenAmount": "41234567890000000",
+      "tradeFee": "0.0123",
+      "estimateGasFee": null,
+      "router": "0xfrm--0xto",
+      "priceImpactPercent": "0.04",
+      "dexRouterList": [],
+      "fromToken": { "tokenContractAddress": "0xfrm", "decimal": "18" },
+      "toToken": { "tokenContractAddress": "0xto", "decimal": "18" },
+      "feeAmount": null,
+      "feeToken": null,
+      "actualSwapAmount": "10000000"
+    },
+    "executionMode": "RFQ",
+    "rfq": {
+      "vendor": "SyntheticRfqVendor",
+      "txType": "EIP712",
+      "typedDataToSign": "{\"types\":{},\"domain\":{},\"primaryType\":\"SyntheticOrder\",\"message\":{}}",
+      "signingScheme": "eip712",
+      "signatureData": ["{\"synthetic\":\"approve-detail\"}"]
+    }
+  },
+  "swapDataTx": {
+    "routerResult": {
+      "binanceChainId": "56",
+      "vendorName": "SyntheticVendor",
+      "fromTokenAmount": "10000000",
+      "toTokenAmount": "41234567890000000"
+    },
+    "executionMode": "SWAP",
+    "tx": {
+      "from": "0xwal",
+      "to": "0xrtr",
+      "data": "0xdeadbeef",
+      "value": "0",
+      "gas": "250000",
+      "gasPrice": "1000000000",
+      "maxPriorityFeePerGas": "0",
+      "minReceiveAmount": "41000000000000000",
+      "slippagePercent": "0.5",
+      "signatureData": [],
+      "computeUnitPrice": null,
+      "computeUnitLimit": null
+    }
+  },
+  "approveTransactionObject": {
+    "data": "0x095ea7b30000000000000000000000000000000000000000000000000000000000000001",
+    "dexContractAddress": "0xspnd",
+    "gasLimit": "60000",
+    "gasPrice": "1000000000"
+  },
+  "simulateData": {
+    "status": "SUCCESS",
+    "failReason": null,
+    "balanceChanges": [
+      {
+        "contractAddress": "0xfrm",
+        "tokenType": "ERC20",
+        "change": "-10000000",
+        "owner": "0xwal"
+      }
+    ],
+    "allowanceChanges": [
+      {
+        "tokenAddress": "0xfrm",
+        "owner": "0xwal",
+        "spender": "0xspnd",
+        "preAmount": "0",
+        "postAmount": "10000000"
+      }
+    ]
+  }
+}
