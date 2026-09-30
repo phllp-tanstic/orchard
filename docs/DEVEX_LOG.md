@@ -386,3 +386,51 @@ Was docs behavior accurate?: Yes for what it describes - the four evmTx fields a
 Suggested fix: -
 Evidence ref: - (documentation observation, re-fetched 2026-09-30. Related live evidence: probe_run_id = ef176412-9d7e-45a0-90f7-745518c7ef7f)
 ```
+
+### 2026-09-30 (pre-DEC-035 spender provenance check)
+
+```text
+Timestamp: 2026-09-30T00:00:00.000Z
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api (Get Aggregated Quote approveTarget; Get ERC-20 Approve Transaction dexContractAddress)
+Operation: Read-only provenance check on the approveTarget/dexContractAddress the live Trading API returns. No signing, no broadcast, no wallet interaction. eth_getCode + eth_call against public BSC RPC (bsc-dataseed.bnbchain.org); Sourcify v2; BscScan/Etherscan APIs.
+Goal: Establish what 0xB44446b0c8E56988c34f7Ff73Ae904982b5FdDA5 actually is before any real-money approve is ever signed against it.
+Expected: A documented, verifiable spender. The API instructs callers to approve this address, so a caller should be able to confirm out-of-band what it is and what it can do with approved funds.
+Observed:
+  The Trading API returns this address as approveTarget on all 181 successful quotes and as data[].dexContractAddress on all 12 approve-transaction calls (probe_run ef176412-9d7e-45a0-90f7-745518c7ef7f), but NO Binance doc page publishes any spender/router address list, so there is nothing to check the value against. Its only occurrences in this repo are artifacts this project itself produced.
+  On-chain, read-only:
+    - 180-byte EIP-2535 diamond proxy stub, Solidity 0.8.23, diamond storage slot 0x5e12654f390e4153c4f63b3dfcc122cf7876a5cdfb496dccf7284c10517a35c5.
+    - facetAddresses() returns 6 facets; facets() exposes 20 selectors total.
+    - Resolved selectors include diamondCut((address,uint8,bytes4[])[],address,bytes) (0x1f931c1c), transferOwnership/confirmOwnershipTransfer/cancelOwnershipTransfer/owner, the diamond loupe, addRouters(address[]) / removeRouters(address[]) / getRouterList(), and get/setFeeRecipient(address).
+    - owner() = 0x1c6f8a6d1011ca0334f6f8f5e2f9222ef1b68fa9, which has NO code: an EOA. A single private key can therefore diamondCut (replace any logic), addRouters (whitelist arbitrary call targets) and setFeeRecipient.
+    - getRouterList() returns 15 whitelisted routers. Three identified independently: 0x111111125421ca6dc452d289314280a0f8842a65 = 1inch Aggregation Router V6, 0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae = LI.FI Diamond, 0x0f9f2366c6157f2acd3c2bfa45cd9031c152d2cf = Native Relay RFQ. getFeeRecipient() = 0xd2a27f8fdbaaec431d59046a8bce4e5db665a271.
+    - Business facet 0xa9fa1b56f4d7bd25375c2d40b4c8e36a9509e603 (8622 bytes) contains the transferFrom(address,address,uint256) selector (so it can pull approved funds), approve and transfer selectors, and 9 CALL plus 3 STATICCALL opcodes. No DELEGATECALL, SELFDESTRUCT, CREATE or CREATE2 in that facet.
+    - 5 of that facet's 7 selectors (0x52d99600, 0xad43f73d, 0x2b3ed68d, 0xcbacb34e, 0x98da6067) resolve to nothing in public signature databases, so the swap entry points' semantics are undetermined.
+  Verification status: unverified. Sourcify v2 returns match=null, creationMatch=null, runtimeMatch=null for the diamond AND for all 6 facets on chain 56. BscScan shows no source and no name tag (owner-observed).
+  Relationship to the one publicly named Binance router: 0xb300000b72deaeb607a12d5f54773d1c19c7028d is name-tagged "Binance: DEX Router" on Etherscan, BscScan, Polygonscan, Basescan and Optimistic Etherscan, and is verified. Its proxy runtime bytecode is byte-IDENTICAL to this spender's except for exactly 32 bytes, which are the Solidity metadata IPFS hash (ours 64cea10a..., theirs 930a620c...). Same diamond template, same compiler, same storage slot. HOWEVER none of this spender's 6 facets shares bytecode with any of that contract's 8 facets, and no facet address is reused - so the verified sibling's source says nothing about what this spender's logic actually does.
+  Approval sizing (mitigating): the approve calldata Binance returns is always exact-amount, never unlimited - 0x095ea7b3 with 10/100/1000 * 10^18 matching each spend size, spender 0xb44446b0...fdda5. No MaxUint256 approval was ever requested across the 12 stored calls.
+HTTP/provider code: 200 / 0 for every Binance call. api.bscscan.com/api v1 now answers HTTP 301 to a docs page; api.etherscan.io/v2 answers {"status":"0","message":"NOTOK","result":"Missing/Invalid API Key"}; bscscan.com and blockscan.com UI answer HTTP 403 to non-browser clients.
+Latency: -
+Workaround: None needed for F001-B, which signs nothing. For any future real-money approve this is a gate, not a detail.
+Was docs behavior accurate?: Incomplete rather than wrong. The API returns a spender address that the documentation never publishes, so a caller cannot verify out-of-band that the approveTarget is the intended contract. A substituted or wrong approveTarget would be indistinguishable from a correct one.
+Suggested fix: Publish the official spender/router addresses per chain in the Trading API docs, and verify the contract source on BscScan, so callers can confirm the approveTarget before approving funds to it.
+Evidence ref: evidence.provider_call.id = 93d5aa4a-a299-4636-877a-dc006fcb6d79 (approve-transaction, data[].dexContractAddress), probe_run_id = ef176412-9d7e-45a0-90f7-745518c7ef7f; approveTarget across probe_run_id = 1f42f52f-a9c8-463d-8bf9-a344758f3b6c. On-chain reads are reproducible against any BSC RPC and are not stored as evidence rows (not Binance API calls).
+```
+
+```text
+Timestamp: 2026-09-30T00:00:00.000Z
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://docs.etherscan.io (BscScan API v1 -> Etherscan V2 multichain migration)
+Operation: GET https://api.bscscan.com/api?module=contract&action=getsourcecode|getabi and GET https://api.etherscan.io/v2/api?chainid=56&...
+Goal: Retrieve verification status and ABI for a BSC contract as part of the spender provenance check.
+Expected: Keyless access to getsourcecode/getabi, as BscScan v1 historically allowed at a low rate limit.
+Observed: api.bscscan.com/api returns HTTP 301 to a Mintlify documentation page for every module=contract request; no JSON is served. The replacement api.etherscan.io/v2/api?chainid=56 returns {"status":"0","message":"NOTOK","result":"Missing/Invalid API Key"} without a key. The bscscan.com and blockscan.com web UIs return HTTP 403 to non-browser user agents, so UI-only facts (contract creator, "contracts with exact matching bytecode") are unreachable programmatically. Sourcify v2 (https://sourcify.dev/server/v2/contract/56/<address>) is keyless and worked as a substitute for verification status only.
+HTTP/provider code: 301 (bscscan v1), 200 with status 0 / "Missing/Invalid API Key" (etherscan v2), 403 (bscscan.com and blockscan.com UI)
+Latency: -
+Workaround: Public BSC JSON-RPC (eth_getCode, eth_call) for on-chain facts, Sourcify v2 for verification status, openchain.xyz signature database for selector resolution. Any contract-verification, creator-history or bytecode-twin lookup needs an Etherscan V2 API key, which this project does not have.
+Was docs behavior accurate?: n/a - third-party explorer, not a sponsor API.
+Suggested fix: Add an ETHERSCAN_API_KEY (V2 multichain, free tier covers BSC) to .env.example if contract provenance checks are to be repeatable.
+Evidence ref: - (third-party explorer observation, 2026-09-30)
+```
