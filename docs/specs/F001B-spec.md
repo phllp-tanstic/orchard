@@ -32,13 +32,14 @@ assuming either way.
 
 ## 2. Decisions this spec implements
 
-| ID | Decision |
-|---|---|
+| ID      | Decision                  |
+| ------- | ------------------------- |
 | DEC-027 | F001-B approved (pending) |
 
 ## 3. Scope
 
 ### T1. `packages/binance` extension: Trading API client
+
 - New request builders for `GET /quote`, `GET /swap`, `GET /approve-transaction`,
   `GET /aggregator/supported/chain`. Reuse the existing signer/limiter/error machinery from
   F001-A verbatim — do not fork it.
@@ -50,6 +51,7 @@ assuming either way.
   infrastructure needed.
 
 ### T2. `packages/binance` extension: Transaction API client (simulate only)
+
 - `POST /transaction/simulate` (exact path per the live Transaction API doc — re-verify
   against the current doc page before coding, do not assume the ingestion report's path is
   current).
@@ -57,6 +59,7 @@ assuming either way.
   of scope until M5.
 
 ### T3. `tools/probe-quote`: quote feasibility probe
+
 - Input: a deterministic sample set drawn from F001-A's stored evidence — every one of the
   40 multi-representation tickers (both platforms), plus a random sample of 20
   single-representation tickers (10 Ondo, 10 bStock), seeded for reproducibility.
@@ -92,6 +95,7 @@ assuming either way.
   as F001-A. The run's overall status is `COMPLETE`/`INCOMPLETE`/`FAILED` exactly as before.
 
 ### T4. Definition of "simulated" (Amendment, replaces blueprint section 6 Step 9 language where it conflicts)
+
 - Do not write this definition speculatively. T3's actual results decide it. This task is:
   once T3 has run live, draft a short amendment stating precisely what "simulated before
   execution" means for an RFQ route on Orchard (e.g. "the approve leg is simulated; the RFQ
