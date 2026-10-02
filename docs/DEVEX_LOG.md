@@ -494,3 +494,37 @@ Was docs behavior accurate?: No. The field is named priceImpactPercent and the p
 Suggested fix: State the scale of priceImpactPercent explicitly, or rename it. A caller enforcing a slippage or impact ceiling on the documented reading is out by 100x in the permissive direction, which is the dangerous direction.
 Evidence ref: probe_run_id = 18ba4538-7c58-4940-8e45-1eae44a7646b (the run that exposed it, pre-fix) and eace2297-c3a1-44d7-bf60-14a279f3ebef (post-fix, same 40 tickers). Per-candidate provider_call ids: evidence.provider_call.id = c6ace4fa-17ec-43fe-baf4-17117145f9e0 (AVGOon), 7eac6a64-e9c0-4c7a-8288-785842035a77 (MSFTon), 62b258fc-a438-4e83-a50c-facb342e8061 (AVGOB, the healthy sibling), 900f3a4b-3e79-4061-bbf4-9d7707487969 (MSFTB).
 ```
+
+### 2026-10-02 (DEC-037 - CORRECTION: the provider share unit IS the exchange-listed share; the PPLT comparison was stale)
+
+```text
+Timestamp: 2026-10-02T00:00:00.000Z
+Author: Claude (agent)
+Developer: -
+Docs URL/page: SEC EDGAR, abrdn Platinum ETF Trust (CIK 0001460235) Form 8-K filed 2026-04-22 and the related 8-K of 2026-05-18; owner-supplied third-party price pages digrin.com and funetf.co.kr for PPLT
+Operation: No API call. A correction to two earlier entries in this log, appended rather than edited because this log is append-only.
+Goal: Retract the claim that the provider per-share unit differs from the exchange-listed share by about 10x, which rested on a stale PPLT price.
+Expected: -
+Observed: The earlier claim was wrong because the reference price it used predates a share split.
+  What the earlier entries said, and which is now retracted:
+    - the 2026-09-30 entry (already marked SUPERSEDED) said "PPLT is a platinum ETF trading near USD 155".
+    - the 2026-10-02 PASS entry said "the per-share benchmark is 15.709643 while the real-world PPLT ETF trades near 155, a factor of about 10".
+  Both USD 155 figures are PRE-SPLIT prices. PPLT underwent a 10-for-1 FORWARD share split in May 2026:
+    - announced 2026-04-22 (Form 8-K, with the press release as exhibit 99.1);
+    - record date market close 2026-05-14, payable after close 2026-05-15;
+    - post-split trading from 2026-05-18;
+    - NAV per share immediately before the split USD 178.62, immediately after USD 17.86; shares outstanding 13,700,000 -> 137,000,000.
+  The owner-supplied third-party pages agree: about 179.80 in April 2026, about 14.59 on 2026-07-29.
+  So a post-split PPLT share is in the mid-teens, and the provider per-share benchmark of 15.709643 observed on 2026-10-02 is CONSISTENT with the exchange-listed share price. There is no 10x unit mismatch. The apparent factor of 10 was a comparison of a post-split provider price against a pre-split public price - the split ratio itself, read as a units problem.
+  What this does and does not establish:
+    - It removes the specific reason to doubt that one provider share equals one exchange-listed share. The "carried risk" paragraph of F002 Amendment A1, and the matching paragraph in the 2026-10-02 PASS entry, are retracted on that point.
+    - It does NOT amount to a same-time price verification. The evidence is SEC filings for the split (primary, authoritative on the split and the NAV figures) plus third-party price pages running through late July 2026. No quote of the PPLT exchange price at 2026-10-02T12:57Z was obtained, so the final step - that 15.709643 matched the listed price at that instant - is consistent and unrefuted rather than measured.
+    - Cross-platform comparability is still measured rather than assumed: the route:probe batch reports the bStock-vs-Ondo per-share benchmark agreement in bps, which came in within 49.6 bps across the 40 multi-representation tickers.
+  Coincidence worth naming: PPLTon carries tokenToShareRatio 10 and PPLT split 10-for-1 in the same year. Those are unrelated - the ratio is a tokenization parameter and the split is a corporate action - but anyone re-reading the old entries will see two different tens and should not conflate them.
+HTTP/provider code: -
+Latency: -
+Workaround: -
+Was docs behavior accurate?: n/a for this entry. The provider was not at fault; the error was an outside price reference used without checking for corporate actions.
+Suggested fix: When sanity-checking a tokenized equity or ETF price against a public quote, check for splits and other corporate actions over the comparison window first. A split makes a correct price look wrong by exactly the split ratio, which is indistinguishable from a units bug at a glance.
+Evidence ref: SEC EDGAR CIK 0001460235, Form 8-K 2026-04-22 (announcement, ex99-1) and Form 8-K 2026-05-18 (effected split, NAV 178.62 -> 17.86). Provider-side figures unchanged: probe_run b44704bc-7870-474b-9c66-4688b6cbb9c1 (PPLTon benchmark 15.709643, implied 15.7309885944, +13.6 bps) and eace2297-c3a1-44d7-bf60-14a279f3ebef (cross-platform benchmark agreement within 49.6 bps).
+```

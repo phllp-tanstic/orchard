@@ -38,6 +38,19 @@ export const REJECTION_REASON_CODES = [
   "NULL_IDENTITY",
   /** assetType not in the policy's allowedAssetTypes (DEC-005: Stock and ETF). */
   "ASSET_TYPE_EXCLUDED",
+  /**
+   * DEC-037: the implied per-share price is ABOVE the /rwa/price referencePrice
+   * benchmark by more than maxReferenceDeviationBps. You would be overpaying
+   * against the provider's own per-share mark.
+   */
+  "REFERENCE_PREMIUM_EXCEEDS_MAX",
+  /**
+   * DEC-037: the implied per-share price is BELOW the benchmark by more than
+   * maxReferenceDeviationBps. A large discount is treated as suspect rather
+   * than as a bargain: on a thin RWA route it more likely means a broken
+   * quote, a stale benchmark or a mispriced pool than free money.
+   */
+  "REFERENCE_DISCOUNT_SUSPECT",
 ] as const;
 
 export type RejectionReasonCode = (typeof REJECTION_REASON_CODES)[number];
@@ -61,6 +74,24 @@ export interface RejectionReason {
 export interface EligibilityPolicy {
   /** Reject a candidate whose priceImpact exceeds this, in basis points. */
   maxPriceImpactBps: string;
+  /**
+   * DEC-037: reject a candidate whose implied per-share price deviates from the
+   * /rwa/price referencePrice benchmark by more than this, in basis points,
+   * in EITHER direction - a premium means overpaying, a discount is suspect.
+   *
+   * A product default, not a measured provider limit. What the evidence does
+   * say is how tight healthy routes are: across the 40-ticker batch
+   * (probe_run eace2297-c3a1-44d7-bf60-14a279f3ebef) the worst ELIGIBLE
+   * candidate sat 91.3 bps from its benchmark (median 18.1), and the two
+   * platforms agreed on the benchmark itself to within 49.6 bps. 300 bps is
+   * therefore roughly 3x the worst healthy case - loose enough not to reject
+   * normal spread, tight enough to catch a broken route.
+   *
+   * A candidate with NO benchmark is NOT rejected by this rule and is NOT
+   * treated as zero deviation; it is flagged REFERENCE_UNAVAILABLE in the
+   * report so a reader can see the check could not run.
+   */
+  maxReferenceDeviationBps: string;
   /**
    * Reject a quote older than this. DEC-036 sets the default to 20s against a
    * MEASURED expiry of about 30s: a quoteId reused after 35s returned 40401
@@ -156,6 +187,13 @@ export interface CandidateRoute {
 
   eligibility: "ELIGIBLE" | "REJECTED";
   rejectionReasons: RejectionReason[];
+  /**
+   * DEC-037: true when no per-share benchmark was available, so the reference
+   * deviation check could not run. The candidate stays eligible - absence of a
+   * benchmark is not evidence of a good price - but the report must show it
+   * rather than let a missing benchmark read as a perfect zero deviation.
+   */
+  referenceUnavailable?: boolean | undefined;
 }
 
 export type DecisionOutcome = "SELECTED" | "NO_ELIGIBLE_ROUTE";

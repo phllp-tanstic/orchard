@@ -76,9 +76,9 @@ export async function persistRun(pool: Pool, args: PersistRunArgs): Promise<Pers
             normalized_expected_shares, effective_price_per_share, reference_price,
             reference_deviation_bps, price_impact_bps, trade_fee, estimate_gas_fee,
             execution_mode, vendor_name, quote_timestamp, quote_age_seconds,
-            eligibility, rejection_reasons)
+            eligibility, rejection_reasons, reference_unavailable)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-                 $21,$22,$23,$24,$25,$26,$27,$28)
+                 $21,$22,$23,$24,$25,$26,$27,$28,$29)
          RETURNING id`,
         [
           executionRequestId,
@@ -109,6 +109,7 @@ export async function persistRun(pool: Pool, args: PersistRunArgs): Promise<Pers
           c.quoteAgeSeconds ?? null,
           c.eligibility,
           JSON.stringify(c.rejectionReasons),
+          c.referenceUnavailable ?? false,
         ],
       );
       candidateRowIds.set(c.id, row.rows[0]!.id);

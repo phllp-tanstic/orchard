@@ -46,16 +46,42 @@ export const USDT_BSC: SpendAsset = {
 export const DEFAULT_MAX_QUOTE_AGE_SECONDS = 20;
 
 /**
- * Default price-impact ceiling, 300 bps. A product default rather than a
- * measured provider limit: observed priceImpactPercent on live equity routes
- * was near zero, so this bounds the tail without being derived from evidence.
- * Stated here so a report never implies it was measured.
+ * Default price-impact ceiling, 300 bps.
+ *
+ * This is now backed by evidence rather than being a bare product guess.
+ * Healthy live routes reported 0 or about 107 bps, while four routes in the
+ * 40-ticker batch (probe_run 18ba4538-7c58-4940-8e45-1eae44a7646b) reported
+ * 93% to 99.96% impact - 9319, 9610, 9990 and 9996 bps once the provider
+ * fraction is converted correctly. A 300 bps ceiling sits far above every
+ * healthy observation and far below every broken one, and in that run it
+ * rejected exactly the broken routes and nothing else.
+ *
+ * The specific number 300 is still a product choice, not a provider limit.
  */
 export const DEFAULT_MAX_PRICE_IMPACT_BPS = "300";
+
+/**
+ * DEC-037 default reference-deviation ceiling, 300 bps, applied in both
+ * directions. A product default, not a measured provider limit. The evidence
+ * that informs it: across the 40-ticker batch
+ * (probe_run eace2297-c3a1-44d7-bf60-14a279f3ebef) the worst ELIGIBLE
+ * candidate was 91.3 bps from its per-share benchmark (median 18.1), and the
+ * two platforms agreed on the benchmark itself to within 49.6 bps.
+ *
+ * A later run of the same 40 tickers
+ * (probe_run 5dc1bdae-36fc-4c7b-b91e-0b5d863202e7) showed a worst ELIGIBLE
+ * deviation of 220.6 bps (median 13.8), so the headroom is about 1.4x rather
+ * than the 3x the first run suggested. Healthy deviation moves with the market,
+ * and 300 bps has less margin than one run implied. It still separated every
+ * healthy candidate from every broken one in both runs, but this is the number
+ * to revisit first if a legitimate route is ever rejected.
+ */
+export const DEFAULT_MAX_REFERENCE_DEVIATION_BPS = "300";
 
 export function defaultPolicy(overrides: Partial<EligibilityPolicy> = {}): EligibilityPolicy {
   return {
     maxPriceImpactBps: DEFAULT_MAX_PRICE_IMPACT_BPS,
+    maxReferenceDeviationBps: DEFAULT_MAX_REFERENCE_DEVIATION_BPS,
     maxQuoteAgeSeconds: DEFAULT_MAX_QUOTE_AGE_SECONDS,
     allowedAssetTypes: DEFAULT_ALLOWED_ASSET_TYPES,
     spendAsset: USDT_BSC,
@@ -187,18 +213,59 @@ export function evaluateEligibility(
     }
   }
 
+  // DEC-037: deviation from the /rwa/price per-share benchmark, in BOTH
+  // directions. Only applies when the candidate actually priced - a candidate
+  // with no quote is already rejected above and has nothing to compare.
+  if (candidate.referenceDeviationBps !== undefined) {
+    const deviation = new Decimal(candidate.referenceDeviationBps);
+    const max = new Decimal(policy.maxReferenceDeviationBps);
+    // Strictly greater, so a deviation exactly at the ceiling is allowed and
+    // the limit reads as inclusive rather than being off by one.
+    if (deviation.greaterThan(max)) {
+      reasons.push({
+        code: "REFERENCE_PREMIUM_EXCEEDS_MAX",
+        detail:
+          "implied per-share price is " +
+          deviation.toFixed(1) +
+          " bps ABOVE the /rwa/price benchmark, over the " +
+          policy.maxReferenceDeviationBps +
+          " bps limit",
+      });
+    } else if (deviation.negated().greaterThan(max)) {
+      reasons.push({
+        code: "REFERENCE_DISCOUNT_SUSPECT",
+        detail:
+          "implied per-share price is " +
+          deviation.negated().toFixed(1) +
+          " bps BELOW the /rwa/price benchmark, over the " +
+          policy.maxReferenceDeviationBps +
+          " bps limit; a discount that large is treated as a broken or stale quote, not a bargain",
+      });
+    }
+  }
+
   return reasons;
 }
 
-/** Applies the verdict to a candidate, returning a new object. Never mutates. */
+/**
+ * Applies the verdict to a candidate, returning a new object. Never mutates.
+ *
+ * Also sets the DEC-037 `referenceUnavailable` flag: a candidate that priced
+ * but had no benchmark to check against stays ELIGIBLE, and the report shows
+ * that the check could not run rather than letting a missing benchmark read as
+ * a perfect zero deviation.
+ */
 export function applyEligibility(
   candidate: CandidateRoute,
   input: EligibilityInput,
 ): CandidateRoute {
   const rejectionReasons = evaluateEligibility(candidate, input);
+  const priced = candidate.effectivePricePerShare !== undefined;
+  const referenceUnavailable = priced && candidate.referenceDeviationBps === undefined;
   return {
     ...candidate,
     eligibility: rejectionReasons.length === 0 ? "ELIGIBLE" : "REJECTED",
     rejectionReasons,
+    ...(referenceUnavailable ? { referenceUnavailable: true } : {}),
   };
 }

@@ -6,6 +6,7 @@ import {
   reasonForProviderCode,
   DEFAULT_ALLOWED_ASSET_TYPES,
   DEFAULT_MAX_QUOTE_AGE_SECONDS,
+  DEFAULT_MAX_REFERENCE_DEVIATION_BPS,
   USDT_BSC,
 } from "./eligibility.js";
 import { REJECTION_REASON_CODES, type CandidateRoute } from "./types.js";
@@ -227,6 +228,12 @@ describe("evaluateEligibility: every reason code", () => {
       produced.add(c.code);
     }
     for (const c of evaluateEligibility(candidate({ assetType: 2 }), input)) produced.add(c.code);
+    for (const c of evaluateEligibility(candidate({ referenceDeviationBps: "400" }), input)) {
+      produced.add(c.code);
+    }
+    for (const c of evaluateEligibility(candidate({ referenceDeviationBps: "-400" }), input)) {
+      produced.add(c.code);
+    }
     expect([...produced].sort()).toEqual([...REJECTION_REASON_CODES].sort());
   });
 });
@@ -243,5 +250,97 @@ describe("applyEligibility", () => {
     const out = applyEligibility(candidate({ binanceChainId: "1" }), input);
     expect(out.eligibility).toBe("REJECTED");
     expect(out.rejectionReasons.map((r) => r.code)).toContain("WRONG_CHAIN");
+  });
+});
+
+describe("DEC-037: deviation from the /rwa/price per-share benchmark", () => {
+  it("defaults maxReferenceDeviationBps to 300 and is overridable", () => {
+    expect(defaultPolicy().maxReferenceDeviationBps).toBe("300");
+    expect(DEFAULT_MAX_REFERENCE_DEVIATION_BPS).toBe("300");
+    expect(defaultPolicy({ maxReferenceDeviationBps: "50" }).maxReferenceDeviationBps).toBe("50");
+  });
+
+  it("REFERENCE_PREMIUM_EXCEEDS_MAX when the implied price is above the benchmark", () => {
+    const reasons = evaluateEligibility(candidate({ referenceDeviationBps: "301" }), input);
+    expect(reasons.map((r) => r.code)).toEqual(["REFERENCE_PREMIUM_EXCEEDS_MAX"]);
+    expect(reasons[0]?.detail).toMatch(/ABOVE/);
+  });
+
+  it("REFERENCE_DISCOUNT_SUSPECT when the implied price is below the benchmark", () => {
+    const reasons = evaluateEligibility(candidate({ referenceDeviationBps: "-301" }), input);
+    expect(reasons.map((r) => r.code)).toEqual(["REFERENCE_DISCOUNT_SUSPECT"]);
+    expect(reasons[0]?.detail).toMatch(/BELOW/);
+    // A large discount is suspect, not a bargain - the wording matters because
+    // a reader could otherwise read a rejection as throwing away free money.
+    expect(reasons[0]?.detail).toMatch(/not a bargain/);
+  });
+
+  it("a deviation exactly at the max is NOT rejected, in either direction", () => {
+    expect(evaluateEligibility(candidate({ referenceDeviationBps: "300" }), input)).toEqual([]);
+    expect(evaluateEligibility(candidate({ referenceDeviationBps: "-300" }), input)).toEqual([]);
+  });
+
+  it("accepts an exact decimal deviation just inside the boundary", () => {
+    expect(
+      evaluateEligibility(candidate({ referenceDeviationBps: "299.9999999999" }), input),
+    ).toEqual([]);
+    expect(
+      evaluateEligibility(candidate({ referenceDeviationBps: "300.0000000001" }), input).map(
+        (r) => r.code,
+      ),
+    ).toEqual(["REFERENCE_PREMIUM_EXCEEDS_MAX"]);
+  });
+
+  it("respects a tighter policy", () => {
+    const tight = {
+      targetChainId: CHAIN,
+      policy: defaultPolicy({ maxReferenceDeviationBps: "50" }),
+    };
+    expect(
+      evaluateEligibility(candidate({ referenceDeviationBps: "60" }), tight).map((r) => r.code),
+    ).toEqual(["REFERENCE_PREMIUM_EXCEEDS_MAX"]);
+    expect(evaluateEligibility(candidate({ referenceDeviationBps: "60" }), input)).toEqual([]);
+  });
+
+  describe("missing benchmark", () => {
+    function noBenchmark(): CandidateRoute {
+      const c: CandidateRoute = { ...candidate() };
+      delete c.referencePrice;
+      delete c.referenceDeviationBps;
+      return c;
+    }
+
+    it("stays ELIGIBLE rather than being rejected", () => {
+      const out = applyEligibility(noBenchmark(), input);
+      expect(out.eligibility).toBe("ELIGIBLE");
+      expect(out.rejectionReasons).toEqual([]);
+    });
+
+    it("is flagged referenceUnavailable so the report can show the check did not run", () => {
+      expect(applyEligibility(noBenchmark(), input).referenceUnavailable).toBe(true);
+    });
+
+    it("is NOT treated as a zero deviation", () => {
+      const out = applyEligibility(noBenchmark(), input);
+      expect(out.referenceDeviationBps).toBeUndefined();
+      // A real zero deviation is a measurement; a missing one is an absence.
+      // They must never look the same.
+      const measured = applyEligibility(candidate({ referenceDeviationBps: "0" }), input);
+      expect(measured.referenceDeviationBps).toBe("0");
+      expect(measured.referenceUnavailable).toBeUndefined();
+    });
+
+    it("does not flag a candidate that never priced at all", () => {
+      const unpriced: CandidateRoute = { ...candidate() };
+      delete unpriced.effectivePricePerShare;
+      delete unpriced.normalizedExpectedShares;
+      delete unpriced.expectedOutputTokenAmount;
+      delete unpriced.referenceDeviationBps;
+      const out = applyEligibility(unpriced, input);
+      // Rejected for having no quote, not flagged for a check that was never
+      // applicable.
+      expect(out.eligibility).toBe("REJECTED");
+      expect(out.referenceUnavailable).toBeUndefined();
+    });
   });
 });
