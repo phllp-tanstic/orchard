@@ -61,22 +61,29 @@ export const DEFAULT_MAX_QUOTE_AGE_SECONDS = 20;
 export const DEFAULT_MAX_PRICE_IMPACT_BPS = "300";
 
 /**
- * DEC-037 default reference-deviation ceiling, 300 bps, applied in both
- * directions. A product default, not a measured provider limit. The evidence
- * that informs it: across the 40-ticker batch
- * (probe_run eace2297-c3a1-44d7-bf60-14a279f3ebef) the worst ELIGIBLE
- * candidate was 91.3 bps from its per-share benchmark (median 18.1), and the
- * two platforms agreed on the benchmark itself to within 49.6 bps.
+ * Default reference-deviation ceiling, 500 bps, applied in both directions
+ * (DEC-038, raised from the 300 bps of DEC-037).
  *
- * A later run of the same 40 tickers
- * (probe_run 5dc1bdae-36fc-4c7b-b91e-0b5d863202e7) showed a worst ELIGIBLE
- * deviation of 220.6 bps (median 13.8), so the headroom is about 1.4x rather
- * than the 3x the first run suggested. Healthy deviation moves with the market,
- * and 300 bps has less margin than one run implied. It still separated every
- * healthy candidate from every broken one in both runs, but this is the number
- * to revisit first if a legitimate route is ever rejected.
+ * The evidence, from two live runs of the same 40 multi-representation tickers:
+ *
+ *   probe_run eace2297-c3a1-44d7-bf60-14a279f3ebef   worst ELIGIBLE  91.3 bps (median 18.1)
+ *   probe_run 5dc1bdae-36fc-4c7b-b91e-0b5d863202e7   worst ELIGIBLE 220.6 bps (median 13.8)
+ *
+ * Healthy deviation moves with the market, and 220.6 bps left only about 1.4x
+ * headroom under the old 300 bps ceiling - close enough that an ordinary market
+ * move could have rejected a legitimate route. 500 bps gives about 2.3x
+ * headroom against the worst healthy observation so far.
+ *
+ * The routes this gate exists to catch are nowhere near that boundary: the
+ * broken routes observed lost 81% to 100% of value and sat THOUSANDS of bps
+ * from their benchmark (81149 bps up to 3.0e10 bps). Widening from 300 to 500
+ * therefore costs no detection power against them - the two populations are
+ * separated by orders of magnitude, not by a few hundred bps.
+ *
+ * Still a product default, not a measured provider limit, and still the first
+ * number to revisit if a legitimate route is ever rejected.
  */
-export const DEFAULT_MAX_REFERENCE_DEVIATION_BPS = "300";
+export const DEFAULT_MAX_REFERENCE_DEVIATION_BPS = "500";
 
 export function defaultPolicy(overrides: Partial<EligibilityPolicy> = {}): EligibilityPolicy {
   return {

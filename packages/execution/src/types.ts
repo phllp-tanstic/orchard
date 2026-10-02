@@ -80,12 +80,13 @@ export interface EligibilityPolicy {
    * in EITHER direction - a premium means overpaying, a discount is suspect.
    *
    * A product default, not a measured provider limit. What the evidence does
-   * say is how tight healthy routes are: across the 40-ticker batch
-   * (probe_run eace2297-c3a1-44d7-bf60-14a279f3ebef) the worst ELIGIBLE
-   * candidate sat 91.3 bps from its benchmark (median 18.1), and the two
-   * platforms agreed on the benchmark itself to within 49.6 bps. 300 bps is
-   * therefore roughly 3x the worst healthy case - loose enough not to reject
-   * normal spread, tight enough to catch a broken route.
+   * say is how tight healthy routes are: the worst ELIGIBLE candidate was
+   * 91.3 bps from its benchmark in probe_run
+   * eace2297-c3a1-44d7-bf60-14a279f3ebef and 220.6 bps in probe_run
+   * 5dc1bdae-36fc-4c7b-b91e-0b5d863202e7. DEC-038 sets the default to 500 bps,
+   * about 2.3x the worst healthy observation, after 220.6 bps left the old
+   * 300 bps ceiling with only about 1.4x margin. Broken routes are thousands
+   * of bps away, so the wider ceiling loses no detection power.
    *
    * A candidate with NO benchmark is NOT rejected by this rule and is NOT
    * treated as zero deviation; it is flagged REFERENCE_UNAVAILABLE in the

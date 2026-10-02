@@ -290,6 +290,45 @@ Status vocabulary for decisions: `APPROVED`, `OPEN`.
   headroom to act on a quote before it expires. It is a policy field, not a constant.
 - **Merged:** not yet - branch `feat/f002-best-execution`.
 
+### DEC-037
+
+- **Status:** APPROVED
+- **Date:** 2026-10-02
+- **Decision:** Add a reference-deviation gate to the eligibility policy.
+  `policy.maxReferenceDeviationBps` rejects a candidate whose implied per-share price
+  deviates from the `/rwa/price` referencePrice benchmark by more than the limit in
+  **either** direction, with two reason codes:
+  `REFERENCE_PREMIUM_EXCEEDS_MAX` (above the benchmark - overpaying) and
+  `REFERENCE_DISCOUNT_SUSPECT` (below it - treated as a broken or stale quote, not a
+  bargain). A deviation exactly at the limit is allowed. A candidate with **no** benchmark
+  stays eligible and is flagged `REFERENCE_UNAVAILABLE` in the report and persisted as
+  `candidate_route.reference_unavailable`; it is never treated as zero deviation.
+- **Reason:** F002 Amendment A1 left a gap - a wildly mispriced route could be eligible, and
+  where it was the only candidate it would have been selected. Three live candidates
+  (AVGOon, MSFTon, SNDKon) were rejected by this gate in
+  `probe_run 5dc1bdae-36fc-4c7b-b91e-0b5d863202e7`.
+- **Also:** retracts A1's claim that the provider share unit differs from the exchange-listed
+  share by about 10x. That rested on a pre-split PPLT price; PPLT ran a 10-for-1 forward split
+  in May 2026 (SEC EDGAR CIK 0001460235, Form 8-K, NAV 178.62 -> 17.86). See Amendment A2.
+- **Merged:** not yet - branch `feat/dec-037-reference-deviation`.
+
+### DEC-038
+
+- **Status:** APPROVED
+- **Date:** 2026-10-02
+- **Decision:** `DEFAULT_MAX_REFERENCE_DEVIATION_BPS` is raised from **300** to **500** bps.
+- **Reason:** the worst ELIGIBLE deviation observed live was 91.3 bps in
+  `probe_run eace2297-c3a1-44d7-bf60-14a279f3ebef` and **220.6 bps** in
+  `probe_run 5dc1bdae-36fc-4c7b-b91e-0b5d863202e7`. At 300 bps that left only about **1.4x**
+  headroom, close enough that an ordinary market move could reject a legitimate route. 500 bps
+  gives about **2.3x**. It costs no detection power: the broken routes this gate exists to
+  catch lost 81% to 100% of value and sat thousands of bps away (81149 bps, up to 3.0e10 bps),
+  so the two populations are separated by orders of magnitude, not a few hundred bps.
+- **Note:** still a **product default, not a measured provider limit**, and still the first
+  number to revisit if a legitimate route is ever rejected.
+- **Supersedes:** the 300 bps default set by DEC-037.
+- **Merged:** not yet - branch `feat/dec-038-reference-deviation-500`.
+
 ## Open
 
 ### DEC-003
