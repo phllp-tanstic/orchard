@@ -18,7 +18,9 @@ function rep(overrides: Partial<RepresentationInput> = {}): RepresentationInput 
     underlyingName: "NVIDIA",
     tokenToShareRatio: "1",
     decimals: "18",
-    perSharePrice: "100",
+    // Midway between the two quoted prices used below, so both candidates sit
+    // about 50 bps from the benchmark - inside the DEC-037 300 bps ceiling.
+    perSharePrice: "99.5",
     ...overrides,
   };
 }
@@ -82,7 +84,7 @@ describe("runBestExecution: happy path", () => {
       async (r: RepresentationInput) =>
         r.platformId === "ondo"
           ? okQuote("1000000000000000000") // 1.0 shares
-          : okQuote("1100000000000000000"), // 1.1 shares - should win
+          : okQuote("1010000000000000000"), // 1.01 shares - should win
     );
     const result = await runBestExecution(request, deps(reps, quote));
 
@@ -94,7 +96,7 @@ describe("runBestExecution: happy path", () => {
     expect(result.decision.reasonCodes).toEqual(["NORMALIZED_SHARES_DESC"]);
     const winner = result.candidates.find((c) => c.id === result.decision.selectedCandidateId);
     expect(winner?.platformId).toBe("bstock");
-    expect(winner?.normalizedExpectedShares).toBe("1.1");
+    expect(winner?.normalizedExpectedShares).toBe("1.01");
   });
 
   it("computes the spend in smallest units and passes it to the quote", async () => {
@@ -317,7 +319,7 @@ describe("runBestExecution: hard rules", () => {
       runBestExecution(
         request,
         deps(reps, async (r: RepresentationInput) =>
-          okQuote(r.tokenContractAddress === "0xa" ? "1000000000000000000" : "1100000000000000000"),
+          okQuote(r.tokenContractAddress === "0xa" ? "1000000000000000000" : "1010000000000000000"),
         ),
       );
     const a = await run();
@@ -326,5 +328,65 @@ describe("runBestExecution: hard rules", () => {
       b.ranked.map((c) => c.tokenContractAddress),
     );
     expect(a.decision.reasonCodes).toEqual(b.decision.reasonCodes);
+  });
+});
+
+describe("DEC-037 end to end: a lone mispriced candidate is not selected by default", () => {
+  it("a single-candidate ticker at about 5000 bps deviation ends as NO_ELIGIBLE_ROUTE", async () => {
+    // One representation only, so before DEC-037 it would have won by default
+    // simply for being the only thing quoted. Benchmark 100, 0.6666... shares
+    // for a 100 spend => 150 per share => +5000 bps.
+    const reps = [rep({ perSharePrice: "100", tokenContractAddress: "0xlonely" })];
+    const result = await runBestExecution(
+      request,
+      deps(reps, async () => okQuote("666666666666666667")),
+    );
+
+    expect(result.candidates).toHaveLength(1);
+    const only = result.candidates[0]!;
+    expect(Number(only.referenceDeviationBps)).toBeCloseTo(5000, 0);
+    expect(only.eligibility).toBe("REJECTED");
+    expect(only.rejectionReasons.map((r) => r.code)).toEqual(["REFERENCE_PREMIUM_EXCEEDS_MAX"]);
+
+    expect(result.ranked).toEqual([]);
+    expect(result.decision.outcome).toBe("NO_ELIGIBLE_ROUTE");
+    expect(result.decision.selectedCandidateId).toBeNull();
+    expect(result.decision.reasonCodes).toEqual(["REFERENCE_PREMIUM_EXCEEDS_MAX"]);
+  });
+
+  it("the same lone candidate IS selected when the policy permits that deviation", async () => {
+    // Shows the rejection comes from policy, not from a hardcoded rule.
+    const reps = [rep({ perSharePrice: "100", tokenContractAddress: "0xlonely" })];
+    const result = await runBestExecution(
+      { ...request, policy: defaultPolicy({ maxReferenceDeviationBps: "6000" }) },
+      deps(reps, async () => okQuote("666666666666666667")),
+    );
+    expect(result.decision.outcome).toBe("SELECTED");
+    expect(result.decision.reasonCodes).toEqual(["SOLE_ELIGIBLE_CANDIDATE"]);
+  });
+
+  it("a lone candidate at a deep discount is rejected as suspect, not taken as a bargain", async () => {
+    // Benchmark 100, 2 shares for a 100 spend => 50 per share => -5000 bps.
+    const reps = [rep({ perSharePrice: "100", tokenContractAddress: "0xcheap" })];
+    const result = await runBestExecution(
+      request,
+      deps(reps, async () => okQuote("2000000000000000000")),
+    );
+    expect(result.candidates[0]!.rejectionReasons.map((r) => r.code)).toEqual([
+      "REFERENCE_DISCOUNT_SUSPECT",
+    ]);
+    expect(result.decision.outcome).toBe("NO_ELIGIBLE_ROUTE");
+  });
+
+  it("a candidate with no benchmark still wins, flagged referenceUnavailable", async () => {
+    const bare = rep({ tokenContractAddress: "0xnobench" });
+    delete bare.perSharePrice;
+    const result = await runBestExecution(
+      request,
+      deps([bare], async () => okQuote("1000000000000000000")),
+    );
+    expect(result.decision.outcome).toBe("SELECTED");
+    expect(result.candidates[0]!.referenceUnavailable).toBe(true);
+    expect(result.candidates[0]!.referenceDeviationBps).toBeUndefined();
   });
 });

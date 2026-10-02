@@ -22,7 +22,9 @@ function rep(
     underlyingName: `${ticker} Inc`,
     tokenToShareRatio: "1",
     decimals: "18",
-    perSharePrice: "100",
+    // Midway between the quoted prices used below, so both candidates sit
+    // about 50 bps from the benchmark - inside the DEC-037 300 bps ceiling.
+    perSharePrice: "99.5",
     ...overrides,
   };
 }
@@ -42,11 +44,11 @@ function okQuote(toTokenAmount: string, overrides: Record<string, unknown> = {})
   };
 }
 
-function baseRequest(tickers?: string[]) {
+function baseRequest(tickers?: string[], policyOverrides: Record<string, unknown> = {}) {
   return {
     ...(tickers !== undefined ? { tickers } : {}),
     spendAmountDecimal: "100",
-    policy: defaultPolicy(),
+    policy: defaultPolicy(policyOverrides),
     targetChainId: CHAIN,
     probeWalletAddress: "0x000000000000000000000000000000000000dEaD",
     gitSha: "sha",
@@ -79,7 +81,7 @@ describe("runRouteProbe: single ticker", () => {
       resolveAll: () => Promise.resolve(reps),
       quote: (r) =>
         Promise.resolve(
-          okQuote(r.platformId === "bstock" ? "1100000000000000000" : "1000000000000000000"),
+          okQuote(r.platformId === "bstock" ? "1010000000000000000" : "1000000000000000000"),
         ),
       now: () => NOW,
     });
@@ -183,10 +185,10 @@ describe("runRouteProbe: batch mode", () => {
             // ondo wins AAA, bstock wins BBB.
             r.underlyingTicker === "AAA"
               ? r.platformId === "ondo"
-                ? "1200000000000000000"
+                ? "1020000000000000000"
                 : "1000000000000000000"
               : r.platformId === "bstock"
-                ? "1300000000000000000"
+                ? "1020000000000000000"
                 : "1000000000000000000",
           ),
         ),
@@ -223,11 +225,18 @@ describe("runRouteProbe: batch mode", () => {
       rep("AAA", "ondo", "0xa1", { perSharePrice: "100" }),
       rep("AAA", "bstock", "0xa2", { perSharePrice: "110" }),
     ];
-    const report = await runRouteProbe(baseRequest(), {
-      resolveAll: () => Promise.resolve(divergent),
-      quote: () => Promise.resolve(okQuote("1000000000000000000")),
-      now: () => NOW,
-    });
+    // The deviation ceiling is loosened here on purpose: this test is about
+    // MEASURING benchmark disagreement, and with divergent benchmarks the
+    // candidates would otherwise be rejected by DEC-037 before the metric is
+    // computed. The default stays 300 bps everywhere else.
+    const report = await runRouteProbe(
+      baseRequest(undefined, { maxReferenceDeviationBps: "5000" }),
+      {
+        resolveAll: () => Promise.resolve(divergent),
+        quote: () => Promise.resolve(okQuote("1000000000000000000")),
+        now: () => NOW,
+      },
+    );
     const c = report.batchSummary!.comparisons[0]!;
     // Platforms are compared in alphabetical order, so this is bstock (110)
     // against ondo (100): (110 - 100) / 100 = +1000 bps. Surfaced, not hidden -
@@ -285,7 +294,7 @@ describe("renderMarkdown", () => {
       resolveAll: () => Promise.resolve([rep("NVDA", "ondo", "0xa"), rep("NVDA", "bstock", "0xb")]),
       quote: (r) =>
         Promise.resolve(
-          okQuote(r.platformId === "bstock" ? "1100000000000000000" : "1000000000000000000"),
+          okQuote(r.platformId === "bstock" ? "1010000000000000000" : "1000000000000000000"),
         ),
       now: () => NOW,
     });

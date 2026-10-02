@@ -76,6 +76,12 @@ export interface RouteProbeReport {
     tickersWithFewerThanTwoEligible: number;
     /** Reason codes across every rejected candidate, with counts. */
     rejectionCodeCounts: Record<string, number>;
+    /**
+     * DEC-037: eligible candidates whose per-share benchmark was missing, so
+     * the deviation check could not run. Reported rather than hidden: these
+     * were admitted without that safeguard.
+     */
+    referenceUnavailableCount: number;
     executionModeCounts: Record<string, number>;
     vendorCounts: Record<string, number>;
     comparisons: PlatformComparison[];
@@ -119,6 +125,8 @@ function candidateLine(c: CandidateRoute, rank: number | undefined): string {
   if (c.executionMode !== undefined) bits.push(`mode=${c.executionMode}`);
   if (c.vendorName !== undefined) bits.push(`vendor=${c.vendorName}`);
   if (c.quoteAgeSeconds !== undefined) bits.push(`age=${c.quoteAgeSeconds}s`);
+  // DEC-037: visible, so a missing benchmark never reads as a zero deviation.
+  if (c.referenceUnavailable === true) bits.push("**REFERENCE_UNAVAILABLE**");
   const reasons =
     c.rejectionReasons.length === 0
       ? ""
@@ -157,7 +165,10 @@ export function renderMarkdown(report: RouteProbeReport): string {
   );
   lines.push(`- Max quote age: ${report.policy.maxQuoteAgeSeconds}s (DEC-036)`);
   lines.push(
-    `- Max price impact: ${report.policy.maxPriceImpactBps} bps (product default, not a measured provider limit)`,
+    `- Max price impact: ${report.policy.maxPriceImpactBps} bps (product default; evidence: healthy routes 0-107 bps, four broken routes 9319-9996 bps)`,
+  );
+  lines.push(
+    `- Max reference deviation: ${report.policy.maxReferenceDeviationBps} bps either way (DEC-037, product default; worst healthy observation 91.3 bps)`,
   );
   lines.push(`- Probe wallet (read-only, never signed for): \`${report.probeWalletAddress}\``);
   lines.push("");
@@ -191,6 +202,10 @@ export function renderMarkdown(report: RouteProbeReport): string {
     lines.push("");
     lines.push("### Rejection reasons across every rejected candidate");
     for (const l of bullets(Object.entries(b.rejectionCodeCounts))) lines.push(l);
+    lines.push("");
+    lines.push(
+      `- Eligible candidates with NO per-share benchmark (deviation check could not run): ${b.referenceUnavailableCount}`,
+    );
     lines.push("");
     lines.push("### Per-ticker platform comparison");
     lines.push("");

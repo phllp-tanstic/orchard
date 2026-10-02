@@ -212,3 +212,63 @@ representations **of the same underlying** against each other. It does mean a cr
 comparison is only valid if both platforms use the same share unit for the same ticker, so
 T5's batch report records the per-share benchmark agreement between bStock and Ondo in bps
 rather than assuming it.
+
+## 12. Amendment A2 - the provider share unit, and the DEC-037 deviation gate
+
+Status: APPROVED by the owner (DEC-037). Appended rather than editing A1.
+
+### A1's carried risk is retracted
+
+A1 closed with a carried risk: that a provider "share" might not equal an exchange-listed
+share, citing a PPLTon per-share benchmark of 15.71 against "a real-world PPLT near 155".
+**That comparison was stale and the risk is withdrawn.**
+
+PPLT underwent a **10-for-1 forward share split** in May 2026 - announced 2026-04-22, record
+date 2026-05-14, post-split trading from 2026-05-18, NAV per share 178.62 before and 17.86
+after (SEC EDGAR, abrdn Platinum ETF Trust, CIK 0001460235, Form 8-K). Owner-supplied
+third-party pages (digrin.com, funetf.co.kr) agree: about 179.80 in April 2026 and about
+14.59 on 2026-07-29.
+
+So a post-split PPLT share is in the mid-teens and the observed benchmark of 15.709643 is
+**consistent** with the exchange-listed price. The apparent factor of 10 was the split ratio
+itself, mistaken for a units problem.
+
+**Evidence level, stated plainly:** the split and its NAV figures come from primary SEC
+filings. The price context runs through late July 2026 from third-party pages. **No same-time
+quote was taken**, so "the benchmark matched the listed price at 2026-10-02T12:57Z" is
+consistent and unrefuted, not measured.
+
+Cross-platform comparability remains **measured, not assumed**: T5's batch reports the
+bStock-vs-Ondo per-share benchmark agreement in bps, observed within 49.6 bps across the 40
+multi-representation tickers.
+
+### DEC-037: a reference-deviation gate
+
+A1 left a real gap: a route could be wildly mispriced yet eligible, and where it was the only
+candidate it would be selected. That gap is now closed by policy rather than left open.
+
+- `policy.maxReferenceDeviationBps`, default **"300"**, applied in **both** directions.
+- `REFERENCE_PREMIUM_EXCEEDS_MAX` - implied per-share price above the `/rwa/price`
+  referencePrice benchmark by more than the max. Overpaying against the provider's own mark.
+- `REFERENCE_DISCOUNT_SUSPECT` - below it by more than the max. Treated as suspect, not as a
+  bargain: on a thin RWA route a deep discount more likely means a broken quote, a stale
+  benchmark or a mispriced pool than free money.
+- A deviation **exactly at** the max is allowed; the limit is inclusive.
+- **Missing benchmark:** the candidate stays **eligible** and is flagged
+  `REFERENCE_UNAVAILABLE` in the report and persisted as
+  `candidate_route.reference_unavailable`. It is **never** treated as zero deviation - an
+  absence of evidence is not evidence of a good price.
+
+300 bps is a **product default, not a measured provider limit**. The evidence that informs it:
+across the 40-ticker batch the worst eligible candidate sat **91.3 bps** from its benchmark
+(median 18.1), and the two platforms agreed on the benchmark itself to within **49.6 bps**.
+
+A later run of the same 40 tickers (`probe_run 5dc1bdae-36fc-4c7b-b91e-0b5d863202e7`) showed
+a worst eligible deviation of **220.6 bps** (median 13.8). So the real headroom is about
+**1.4x**, not the 3x the first run suggested - healthy deviation moves with the market. The
+ceiling still separated every healthy candidate from every broken one in both runs, but it is
+the first number to revisit if a legitimate route is ever rejected.
+
+`maxPriceImpactBps` is now evidence-backed too: healthy live routes reported 0 to about 107
+bps, while four broken routes reported **93% to 99.96% impact** (9319-9996 bps). A 300 bps
+ceiling sits far above every healthy observation and far below every broken one.

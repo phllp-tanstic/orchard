@@ -62,6 +62,24 @@ verified it says so instead of guessing.
 - Quote TTL is about 30s: a `quoteId` reused after 35s returned `40401`.
 - Undocumented quote error codes `40367` (non-trading session) and `40374` (insufficient
   liquidity) account for every quote failure observed; `40367` is market-hours dependent.
+- **`/rwa/price` `referencePrice` is the per-underlying-share price** and is the only
+  per-share field. `/rwa/tokens` `referencePrice` is per-TOKEN and `/rwa/tokens`
+  `tokenPrice` is that value scaled again by `tokenToShareRatio`; neither is per-share
+  (F002 Amendment A1, DEC-026 resolved). Normalization
+  `normalizedShares = (toTokenAmount / 10^decimals) * tokenToShareRatio` was confirmed
+  against it: ratio >= 2 group 9/9 within **51.4 bps** (`probe_run
+b44704bc-7870-474b-9c66-4688b6cbb9c1`).
+- **`priceImpactPercent` is a FRACTION in [0,1], not a percentage**, despite the name and the
+  doc wording. Four live routes lost 81-100% of value while reporting 0.93-0.9996. Converting
+  with x100 rather than x10000 is 100x too permissive, in the dangerous direction.
+- **The provider share unit is consistent with the exchange-listed share.** An earlier claim of
+  a ~10x mismatch rested on a stale pre-split PPLT price: PPLT ran a 10-for-1 forward split in
+  May 2026 (SEC EDGAR CIK 0001460235, Form 8-K; NAV 178.62 -> 17.86), so the observed
+  per-share benchmark of 15.709643 is in the right range. Evidence level: primary SEC filings
+  for the split, third-party price pages through late July 2026, and **no same-time quote** -
+  consistent and unrefuted rather than measured (F002 Amendment A2).
+- Across the 40 multi-representation tickers the two platforms agreed on the per-share
+  benchmark to within **49.6 bps**, so cross-platform comparability is measured, not assumed.
 
 ## Current Milestone
 
@@ -70,9 +88,19 @@ verified it says so instead of guessing.
   underlying, obtain a real quote for each, normalize to comparable underlying shares, rank
   deterministically, and persist why the winner won. Read-only.
 - **Actual capability:** M1 is `CLOSED / COMPLETE (VERIFIED)`. F001-B (quote and simulation
-  feasibility) is merged. M2 is in progress on this branch.
-- **Incomplete work:** M2 tasks T1-T5 of the F002 spec. Everything beyond M2 is
-  `NOT IMPLEMENTED`.
+  feasibility) is merged. **F002 T1-T5 are implemented and merged** (PR #17): the
+  `@orchard/execution` domain (normalization, eligibility policy, deterministic ranking
+  `f002-rank-1.0.0`), the orchestrator, the append-only `execution.*` schema
+  (migrations 008-009) and `pnpm route:probe`. DEC-037 adds the reference-deviation gate.
+  Live acceptance has been run: NVDA at 100 USDT with both representations quoted
+  independently and the report reconciling byte-for-byte against the stored
+  `provider_call` rows, and a 40-ticker batch
+  (`probe_run eace2297-c3a1-44d7-bf60-14a279f3ebef`) with 40/40 selected, wins bStock 27 /
+  Ondo 13, worst platform spread 88 bps.
+  Status is `VERIFIED` for what those runs show and nothing more: eligibility is market-hours
+  dependent, so a platform win count belongs to its run, not to the product.
+- **Incomplete work:** everything beyond M2 is `NOT IMPLEMENTED`. M3 (simulation) is blocked
+  on DEC-029; M5 (execution) on F001-C and DEC-003.
 
 ## Gates
 
@@ -201,6 +229,10 @@ pnpm migrate:up
 # Read-only live probes
 pnpm probe:rwa      # RWA universe -> reports/rwa-universe.{json,md}
 pnpm probe:quote    # quote feasibility -> reports/quote-feasibility.{json,md}
+
+# Deterministic best execution (F002). Read-only: /rwa/tokens, /rwa/price, /quote.
+pnpm route:probe -- --ticker NVDA --amount 100
+pnpm route:probe -- --batch --amount 100   # every multi-representation ticker
 
 # Checks
 pnpm lint && pnpm format:check && pnpm typecheck && pnpm test

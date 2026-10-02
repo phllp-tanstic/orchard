@@ -235,6 +235,7 @@ export async function runRouteProbe(
     let selected = 0;
     let noRoute = 0;
     let fewerThanTwo = 0;
+    let referenceUnavailableCount = 0;
 
     for (const r of results) {
       if (r.decision.outcome === "SELECTED") {
@@ -256,6 +257,9 @@ export async function runRouteProbe(
         if (c.vendorName !== undefined) {
           vendorCounts[c.vendorName] = (vendorCounts[c.vendorName] ?? 0) + 1;
         }
+        if (c.eligibility === "ELIGIBLE" && c.referenceUnavailable === true) {
+          referenceUnavailableCount += 1;
+        }
       }
       const comparison = comparePlatforms(r);
       if (comparison.fewerThanTwoEligible) fewerThanTwo += 1;
@@ -270,6 +274,7 @@ export async function runRouteProbe(
       winsByPlatform,
       tickersWithFewerThanTwoEligible: fewerThanTwo,
       rejectionCodeCounts,
+      referenceUnavailableCount,
       executionModeCounts,
       vendorCounts,
       comparisons,
