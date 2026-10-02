@@ -27,9 +27,22 @@ function runMigrate(
   return { status: result.status, stderr: result.stderr };
 }
 
+/**
+ * The guard, exercised through the REAL CLI entry point.
+ *
+ * db/migrate-cli.test.ts covers every refusal against the pure planner, which
+ * is where the exhaustive cases live. This file keeps spawning the actual
+ * script, because the thing worth proving here is that the wiring - argv, env,
+ * exit code - is hooked up at all. A perfect planner behind a CLI that ignores
+ * it would pass one file and fail the operator.
+ *
+ * `down 1`, not a bare `down`: since F003 hardening item 5 a bare `down` is
+ * refused for a different and earlier reason (no count), so passing a count is
+ * what actually reaches the permission gate.
+ */
 describe("db/migrate.ts destructive-migration guard (DEC-013)", () => {
-  it("refuses `down` when ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION is unset", () => {
-    const { status, stderr } = runMigrate(["down"], {
+  it("refuses `down 1` when ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION is unset", () => {
+    const { status, stderr } = runMigrate(["down", "1"], {
       DATABASE_URL: FAKE_DATABASE_URL,
       ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION: undefined,
     });
@@ -37,8 +50,8 @@ describe("db/migrate.ts destructive-migration guard (DEC-013)", () => {
     expect(stderr).toMatch(/ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION/);
   });
 
-  it("refuses `down` when ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION is set to something other than '1'", () => {
-    const { status, stderr } = runMigrate(["down"], {
+  it("refuses `down 1` when ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION is set to something other than '1'", () => {
+    const { status, stderr } = runMigrate(["down", "1"], {
       DATABASE_URL: FAKE_DATABASE_URL,
       ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION: "true",
     });
@@ -53,5 +66,65 @@ describe("db/migrate.ts destructive-migration guard (DEC-013)", () => {
     });
     // Fails for other reasons (no real DB at that address) but never the guard.
     expect(stderr).not.toMatch(/ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION/);
+  });
+});
+
+describe("db/migrate.ts refuses a count-less rollback through the real CLI (item 5)", () => {
+  it("refuses a BARE `down` even with permission granted", () => {
+    // The incident: a bare `down` rolled back every migration. Permission to
+    // roll back one is not permission to roll back all of them.
+    const { status, stderr } = runMigrate(["down"], {
+      DATABASE_URL: FAKE_DATABASE_URL,
+      ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION: "1",
+    });
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/no count/);
+    expect(stderr).toMatch(/reset --confirm/);
+  });
+
+  it("refuses `down all`", () => {
+    const { status, stderr } = runMigrate(["down", "all"], {
+      DATABASE_URL: FAKE_DATABASE_URL,
+      ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION: "1",
+    });
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/positive whole number/);
+  });
+
+  it("refuses `reset` without the confirmation, naming the database", () => {
+    const { status, stderr } = runMigrate(["reset"], {
+      DATABASE_URL: FAKE_DATABASE_URL,
+      ORCHARD_ALLOW_FULL_RESET: "1",
+    });
+    expect(status).not.toBe(0);
+    // FAKE_DATABASE_URL points at a database called "unused".
+    expect(stderr).toMatch(/--confirm unused/);
+  });
+
+  it("refuses `reset --confirm` for the WRONG database name", () => {
+    const { status, stderr } = runMigrate(["reset", "--confirm", "orchard"], {
+      DATABASE_URL: FAKE_DATABASE_URL,
+      ORCHARD_ALLOW_FULL_RESET: "1",
+    });
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/must match exactly/);
+  });
+
+  it("refuses a correctly confirmed `reset` without ORCHARD_ALLOW_FULL_RESET", () => {
+    const { status, stderr } = runMigrate(["reset", "--confirm", "unused"], {
+      DATABASE_URL: FAKE_DATABASE_URL,
+      // The down permission is deliberately NOT enough for a full reset.
+      ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION: "1",
+      ORCHARD_ALLOW_FULL_RESET: undefined,
+    });
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/ORCHARD_ALLOW_FULL_RESET=1/);
+  });
+
+  it("refuses an unknown verb with usage", () => {
+    const { status, stderr } = runMigrate(["sideways"], { DATABASE_URL: FAKE_DATABASE_URL });
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/Usage:/);
+    expect(stderr).toMatch(/down <count>/);
   });
 });

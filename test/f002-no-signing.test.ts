@@ -55,12 +55,18 @@ const FEATURE_DIRS = [
 ];
 
 /**
- * One file is exempt from the forbidden-string scan, by name, with a reason:
- * the bundle-secret scan ENUMERATES these strings in order to assert they are
- * absent from the client bundle. Scanning it would make the guard flag the
- * very test that enforces the same rule. Nothing else is exempt.
+ * The client-bundle scanner is exempt from the forbidden-string scan, by file
+ * name, with a reason: it ENUMERATES these strings in order to assert they are
+ * absent from the built bundle. Scanning it would make this guard flag the
+ * very code that enforces the same rule.
+ *
+ * Three files, and no more: the scanner, the CLI that runs it after a build,
+ * and its tests (which plant each primitive as a negative control). The
+ * allowlist is the one way this guard can be weakened, so its contents are
+ * themselves asserted below - a fourth entry has to be argued for in a diff,
+ * not slipped in.
  */
-const ALLOWLISTED_FILES = new Set(["bundle-scan.test.ts"]);
+const ALLOWLISTED_FILES = new Set(["bundle-scan.ts", "bundle-scan-cli.ts", "bundle-scan.test.ts"]);
 
 // node's own basename, not a hand-rolled split: a regex that forgets the
 // Windows separator silently matches nothing and the allowlist quietly fails
@@ -91,6 +97,23 @@ describe("F002/F003: the execution feature and the web app cannot sign, swap, su
 
   it("covers the web app, not only the engine", () => {
     expect(files.some((f) => f.includes(join("apps", "web")))).toBe(true);
+  });
+
+  it("exempts ONLY the client-bundle scanner, and every exempt file exists", () => {
+    // The allowlist is this guard's single weak point. Pinning its contents
+    // means growing it is a visible decision; checking the files exist means a
+    // rename cannot leave a dead entry quietly broadening nothing.
+    expect([...ALLOWLISTED_FILES].sort()).toEqual([
+      "bundle-scan-cli.ts",
+      "bundle-scan.test.ts",
+      "bundle-scan.ts",
+    ]);
+    for (const name of ALLOWLISTED_FILES) {
+      expect(
+        allFiles.some((f) => fileName(f) === name),
+        `allowlisted file ${name} no longer exists - remove the entry`,
+      ).toBe(true);
+    }
   });
 
   it.each(FORBIDDEN)("never references %s (%s)", (pattern, label) => {

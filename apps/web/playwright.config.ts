@@ -3,17 +3,24 @@ import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
 
 /**
- * Browser end-to-end tests for apps/web (F003 T5).
+ * Browser end-to-end tests for apps/web (F003 T5, split in hardening item 6).
  *
- * These run LOCALLY, by the owner, against the real provider and the real
- * evidence store - AGENTS.md forbids live provider calls in CI, so `pnpm
- * test:e2e` is deliberately NOT a CI step. CI builds the app, scans the client
- * bundle for secrets and runs the component tests instead.
+ * The suite is divided by TAG, and the split is about live provider calls:
+ *
+ *  - `@stub` tests make no provider call. They either stub the /api/previews
+ *    response inside the browser, or exercise endpoints and pages that read
+ *    only the database and the local configuration. These run in CI, against
+ *    a synthetic universe seed and a provider base URL that goes nowhere.
+ *  - `@live` tests drive the real provider. They are OWNER-RUN, locally, only:
+ *    AGENTS.md forbids live provider calls in CI.
+ *
+ * `pnpm test:e2e:stub` runs the CI subset, `pnpm test:e2e:live` the rest, and
+ * `pnpm test:e2e` runs everything (which needs real credentials).
  *
  * `workers: 1` is not a performance choice. The rate limiter and the
  * concurrency budget are in-process and F003 section 4 assumes exactly one
  * server instance; parallel workers would race each other through the same
- * provider budget and make a BUSY response look like a flaky test.
+ * budget and make a rate-limited or BUSY response look like a flaky test.
  */
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -50,7 +57,10 @@ export default defineConfig({
     // scan inspects and what deployment would run.
     command: `pnpm --filter @orchard/web exec next start --port ${PORT} --hostname 127.0.0.1`,
     cwd: repoRoot,
-    url: `${baseURL}/api/health`,
+    // /api/live, not /api/health: readiness answers 503 when the provider is
+    // unreachable, which is the normal and correct state in the CI stub run.
+    // Waiting on it there would hang until the timeout.
+    url: `${baseURL}/api/live`,
     reuseExistingServer: !process.env["CI"],
     timeout: 180_000,
     stdout: "pipe",

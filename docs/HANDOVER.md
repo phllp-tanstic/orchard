@@ -226,6 +226,13 @@ pnpm install
 docker compose up -d
 pnpm migrate:up
 
+# Rolling back. The count is REQUIRED: `pnpm migrate:down` with no count is
+# refused, because it used to default to "all" and emptied a local evidence
+# database when the operator believed it stepped back one.
+pnpm migrate:down 1                            # needs ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION=1
+pnpm migrate:reset -- --confirm <databaseName>  # needs ORCHARD_ALLOW_FULL_RESET=1
+# reset prints the database name and every evidence table's row count first.
+
 # Read-only live probes
 pnpm probe:rwa      # RWA universe -> reports/rwa-universe.{json,md}
 pnpm probe:quote    # quote feasibility -> reports/quote-feasibility.{json,md}
@@ -234,10 +241,25 @@ pnpm probe:quote    # quote feasibility -> reports/quote-feasibility.{json,md}
 pnpm route:probe -- --ticker NVDA --amount 100
 pnpm route:probe -- --batch --amount 100   # every multi-representation ticker
 
+# Web app (F003). web:build runs the client-bundle secret scan as a post-build
+# step, so a leaked secret fails the build - on a host too, not only in CI.
+pnpm universe:refresh   # stored universe snapshot, live; needed before search works
+pnpm web:build
+pnpm web:dev            # http://localhost:3000, reads the repo-root .env
+
 # Checks
 pnpm lint && pnpm format:check && pnpm typecheck && pnpm test
+pnpm test:web           # component tests (jsdom)
 pnpm test:integration   # needs Postgres reachable on localhost:5432
+pnpm test:e2e:stub      # browser tests with NO provider call - this subset runs in CI
+pnpm test:e2e:live      # browser tests against the real provider - owner-run, local only
 ```
+
+The browser suite is split by tag for one reason: AGENTS.md forbids live provider calls in CI.
+The `@stub` subset intercepts `/api/previews` inside the browser or exercises pages that read
+only the database, and CI runs it against an obviously synthetic universe seed (ticker `SYNTH`,
+written through the real writer) with the provider base URL pointed at a closed local port so
+no request can reach the provider even by accident. The `@live` tests are the owner's.
 
 Required `.env` keys - **names only, never values** (see `.env.example`):
 

@@ -33,7 +33,7 @@ async function expectPersistentNotice(page: Page): Promise<void> {
   await expect(page.getByText(/signs, submits or broadcasts a transaction/).first()).toBeVisible();
 }
 
-test.describe("the app is reachable and honest about itself", () => {
+test.describe("the app is reachable and honest about itself @stub", () => {
   test("health reports what it actually measured", async ({ request }) => {
     const response = await request.get("/api/health");
     const body = (await response.json()) as {
@@ -103,7 +103,7 @@ test.describe("the app is reachable and honest about itself", () => {
   });
 });
 
-test.describe("search to preview, live", () => {
+test.describe("search to preview @live", () => {
   test("the home page leads with the company, not the plumbing", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Buy the company");
@@ -224,7 +224,7 @@ test.describe("search to preview, live", () => {
   });
 });
 
-test.describe("the honest states, reached by stubbing the API RESPONSE", () => {
+test.describe("the honest states, reached by stubbing the API RESPONSE @stub", () => {
   test("the busy state says nothing was submitted", async ({ page }) => {
     await page.route("**/api/previews", (route) =>
       route.fulfill({
@@ -327,7 +327,7 @@ test.describe("the honest states, reached by stubbing the API RESPONSE", () => {
   });
 });
 
-test.describe("accessibility and layout smoke checks", () => {
+test.describe("accessibility and layout smoke checks @stub", () => {
   const paths = ["/", "/explore", `/stock/${TICKER}`, `/stock/${TICKER}/amount`];
 
   for (const path of paths) {

@@ -28,7 +28,11 @@
     "web:build": "pnpm --filter @orchard/web build",
     "web:start": "pnpm --filter @orchard/web start",
     "test:e2e": "pnpm --filter @orchard/web test:e2e",
-    "test:web": "vitest run --config vitest.web.config.ts"
+    "test:web": "vitest run --config vitest.web.config.ts",
+    "test:e2e:stub": "pnpm --filter @orchard/web test:e2e:stub",
+    "test:e2e:live": "pnpm --filter @orchard/web test:e2e:live",
+    "seed:synthetic-universe": "pnpm --filter @orchard/web seed:synthetic-universe",
+    "migrate:reset": "tsx db/migrate.ts reset"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

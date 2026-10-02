@@ -7,10 +7,14 @@
   "description": "Orchard read-only consumer web app and BFF (spec F003 T1-T4). Server-only provider access; no wallet, no signing.",
   "scripts": {
     "dev": "node scripts/next-with-root-env.mjs dev --port 3000",
-    "build": "next build",
+    "build": "next build && pnpm run scan:bundle",
     "start": "node scripts/next-with-root-env.mjs start --port 3000",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "scan:bundle": "tsx src/server/bundle-scan-cli.ts",
+    "test:e2e:stub": "playwright test --grep @stub",
+    "test:e2e:live": "playwright test --grep @live",
+    "seed:synthetic-universe": "tsx test/fixtures/SYNTHETIC_universe-seed.ts"
   },
   "dependencies": {
     "@orchard/binance": "workspace:*",
@@ -30,6 +34,7 @@
     "@types/node": "^22.10.1",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.0.7",
-    "@types/react-dom": "^19.0.3"
+    "@types/react-dom": "^19.0.3",
+    "tsx": "^4.23.15"
   }
 }
