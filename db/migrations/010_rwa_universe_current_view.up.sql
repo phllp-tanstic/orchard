@@ -95,6 +95,14 @@ CREATE INDEX token_snapshot_name_lower_idx
 CREATE INDEX token_snapshot_run_ticker_idx
   ON rwa.token_snapshot (probe_run_id, underlying_ticker);
 
+-- DEC-014: every object in evidence/rwa is owned by orchard_migrator, not by
+-- whichever role happened to run the migration. Without these three lines the
+-- views end up owned by the connecting superuser, which the bootstrap
+-- integration test correctly rejects.
+ALTER VIEW rwa.latest_complete_snapshot_run OWNER TO orchard_migrator;
+ALTER VIEW rwa.universe_current OWNER TO orchard_migrator;
+ALTER VIEW rwa.underlying_current OWNER TO orchard_migrator;
+
 GRANT SELECT ON rwa.latest_complete_snapshot_run TO orchard_app;
 GRANT SELECT ON rwa.universe_current TO orchard_app;
 GRANT SELECT ON rwa.underlying_current TO orchard_app;
