@@ -17,6 +17,7 @@ without claiming anything that is not verified.
 ## 2. Facts this spec relies on
 
 Verified live or in merged code:
+
 - F002 engine: runBestExecution ranks eligible candidates deterministically and persists execution_request,
   candidate_route and route_decision (append-only). Defaults: maxQuoteAge 20s, maxPriceImpact 300 bps,
   maxReferenceDeviation 500 bps, asset types Stock and ETF.
@@ -27,6 +28,7 @@ Verified live or in merged code:
 - Provider reference-price fields are per-token on /rwa/tokens and per-share on /rwa/price (Amendment A1).
 
 Documented, not yet proven from this project's own infrastructure:
+
 - web3.binance.com/en/dev-docs/web3-api-prohibited-regions (last modified 2026-10-01): IP checks run on the
   API server side. Prohibited: US and its territories, CA, NL, GB, IR, CU, KP, Crimea, DPR, LPR, and JP
   conditionally. Both client IP and server location are checked. Whether the app's egress IP geolocates
@@ -35,6 +37,7 @@ Documented, not yet proven from this project's own infrastructure:
 ## 3. Scope
 
 ### T0. Hosting feasibility spike (owner-run deploy, gated on DEC-041)
+
 - A minimal service in the chosen provider and region exposing GET /api/health. It makes one signed, read-only
   /rwa/platforms call and reports status, provider code, latency and the egress IP's country as seen by an
   independent IP-geolocation lookup. Acceptance: a code 0 response from the deployed host.
@@ -42,6 +45,7 @@ Documented, not yet proven from this project's own infrastructure:
 - The Binance key lives only in the host's secret store. Never in the repo, the image, or client code.
 
 ### T1. apps/web scaffold
+
 - Framework per DEC-040. TypeScript strict, pnpm workspace, lint, format, typecheck and tests in CI.
 - Server-only environment validation at boot (zod). Missing or malformed config fails closed.
 - A build-time test that scans the client bundle for the Binance key and secret names and values, and for
@@ -49,6 +53,7 @@ Documented, not yet proven from this project's own infrastructure:
 - Security headers, a strict content-security policy, same-origin only, request size limits.
 
 ### T2. BFF API (server side only)
+
 - GET /api/health: database reachability, provider reachability, universe freshness.
 - GET /api/capabilities: truthful flags computed at runtime. rwaDiscovery, liveQuotes, bestExecution true only
   when verified in this process; transactionSimulation, mainnetExecution, agenticWallet, shareIntent,
@@ -70,6 +75,7 @@ Documented, not yet proven from this project's own infrastructure:
   invalid input. Nothing falls back to a guessed price.
 
 ### T3. Universe snapshot for search
+
 - Search reads the latest COMPLETE run's stored snapshot (rwa.* tables), not live provider calls per request.
 - pnpm universe:refresh reuses the F001-A pipeline (platforms, tokens, price). It does not duplicate it.
 - Before building, confirm the stored snapshot holds ticker, underlying name, asset type, market status,
@@ -79,6 +85,7 @@ Documented, not yet proven from this project's own infrastructure:
   shows a stale-data banner.
 
 ### T4. UI
+
 - Pages: home, explore, stock detail, amount entry, preview. Mobile first, responsive, accessible basics.
 - Banking-style default language: company, amount, estimated shares, fees, quote age. No contract address,
   DEX name, wrapper selector or slippage form in the default view.
@@ -93,6 +100,7 @@ Documented, not yet proven from this project's own infrastructure:
 - Initials avatars. No third-party image hosts, fonts or scripts in this feature.
 
 ### T5. Public preview deployment (gated on T0 and DEC-041)
+
 - Deploy to the chosen host. Acceptance is external: a fresh browser, no local setup, health shows provider
   reachable from the deployed egress, capabilities truthful.
 
