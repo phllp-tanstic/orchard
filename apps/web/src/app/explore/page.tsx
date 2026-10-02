@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Avatar } from "@/components/Avatar";
 import { SearchBox } from "@/components/SearchBox";
 import { StaleUniverseBanner } from "@/components/Banners";
@@ -10,6 +11,12 @@ export const dynamic = "force-dynamic";
 /**
  * Explore (F003 T4). Search results from the stored snapshot. An empty result
  * says so plainly instead of showing an unrelated suggestion.
+ *
+ * This page also owns the "that was a ticker" shortcut, because it is the
+ * first place in the request with the company list in hand: a query that is
+ * EXACTLY one result's ticker jumps straight to that company, and anything
+ * else stays here as a list. The search box cannot make that call - it has no
+ * list, so it would have to guess from the shape of the word.
  */
 export default async function ExplorePage({
   searchParams,
@@ -30,6 +37,11 @@ export default async function ExplorePage({
   } catch {
     failed = true;
   }
+
+  // Outside the try: redirect() signals by throwing, so catching it here would
+  // swallow the navigation and render "search is unavailable" instead.
+  const exact = results.find((r) => r.ticker.toLowerCase() === query.toLowerCase());
+  if (exact !== undefined) redirect(`/stock/${exact.ticker}`);
 
   return (
     <>

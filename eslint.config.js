@@ -55,5 +55,20 @@ export default [
       "no-undef": "off",
     },
   },
+  {
+    // Plain ES-module node scripts (build and run wrappers). These are not
+    // TypeScript, so the block above does not reach them and `no-undef` has no
+    // compiler behind it here - which is exactly where the rule earns its
+    // keep, so it stays on and only the node globals are declared.
+    files: ["**/*.mjs"],
+    languageOptions: {
+      sourceType: "module",
+      ecmaVersion: 2022,
+      globals: { ...globals.node, ...globals.es2021 },
+    },
+    rules: {
+      "no-console": ["warn", { allow: ["warn", "error"] }],
+    },
+  },
   eslintConfigPrettier,
 ];

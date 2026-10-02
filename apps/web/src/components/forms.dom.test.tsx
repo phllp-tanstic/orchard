@@ -31,20 +31,25 @@ function submit(form: HTMLElement): void {
 }
 
 describe("SearchBox", () => {
-  it("sends a ticker-shaped query straight to that company, upper-cased", () => {
+  it.each([
+    ["a ticker", " nvda ", "/explore?q=nvda"],
+    ["a single-word name", "nvidia", "/explore?q=nvidia"],
+    ["free text", "Berkshire Hathaway", "/explore?q=Berkshire%20Hathaway"],
+  ])("sends %s to the server to resolve", (_label, typed, expected) => {
+    // The browser has no company list, so it must not decide whether a word is
+    // a ticker. Guessing from the word's SHAPE is what sent "nvidia" to
+    // /stock/NVIDIA and answered "not supported" for a supported company.
     const { container } = render(<SearchBox />);
-    fireEvent.change(screen.getByTestId("search-input"), { target: { value: " nvda " } });
+    fireEvent.change(screen.getByTestId("search-input"), { target: { value: typed } });
     submit(container.querySelector("form") as HTMLElement);
-    expect(push).toHaveBeenCalledWith("/stock/NVDA");
+    expect(push).toHaveBeenCalledWith(expected);
   });
 
-  it("sends free text to the explore list instead", () => {
+  it("never navigates straight to a stock page", () => {
     const { container } = render(<SearchBox />);
-    fireEvent.change(screen.getByTestId("search-input"), {
-      target: { value: "Berkshire Hathaway" },
-    });
+    fireEvent.change(screen.getByTestId("search-input"), { target: { value: "NVDA" } });
     submit(container.querySelector("form") as HTMLElement);
-    expect(push).toHaveBeenCalledWith("/explore?q=Berkshire%20Hathaway");
+    expect(push.mock.calls[0]?.[0]).not.toMatch(/^\/stock\//);
   });
 
   it("does nothing at all on an empty submit", () => {

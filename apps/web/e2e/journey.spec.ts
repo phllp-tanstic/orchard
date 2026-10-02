@@ -28,17 +28,32 @@ const AMOUNT = process.env["ORCHARD_E2E_AMOUNT"] ?? "100";
 async function expectPersistentNotice(page: Page): Promise<void> {
   const notice = page.locator("p.notice");
   await expect(notice).toContainText("Estimates only, and not advice");
-  await expect(page.getByText(/signs, submits or broadcasts a transaction/)).toBeVisible();
+  // `.first()`: the sentence appears in the footer and again on the confirm
+  // step. More than one is the point, so this must not be a strict match.
+  await expect(page.getByText(/signs, submits or broadcasts a transaction/).first()).toBeVisible();
 }
 
 test.describe("the app is reachable and honest about itself", () => {
   test("health reports what it actually measured", async ({ request }) => {
     const response = await request.get("/api/health");
-    const body = (await response.json()) as Record<string, unknown>;
+    const body = (await response.json()) as {
+      ok: boolean;
+      checks: Record<string, { ok: boolean; detail?: string; latencyMs?: number }>;
+      snapshot: unknown;
+      note: string;
+    };
     // A health endpoint that cannot be trusted is worse than none, so this
-    // asserts the fields exist and are booleans rather than asserting "ok".
-    expect(typeof body["databaseReachable"]).toBe("boolean");
-    expect(typeof body["universe"]).toBe("object");
+    // asserts each check reports a real measurement rather than asserting
+    // that everything is fine.
+    expect(typeof body.ok).toBe("boolean");
+    expect(typeof body.checks["database"]?.ok).toBe("boolean");
+    expect(typeof body.checks["provider"]?.ok).toBe("boolean");
+    // Latency proves the check actually ran rather than returning a constant.
+    expect(typeof body.checks["database"]?.latencyMs).toBe("number");
+    expect(body.note).toMatch(/signs, submits or broadcasts/);
+    // 503 when something is genuinely down is the honest answer, so the
+    // status is allowed to be either - but it must agree with `ok`.
+    expect(response.status()).toBe(body.ok ? 200 : 503);
     expect(response.headers()["cache-control"]).toBe("no-store");
   });
 
@@ -94,13 +109,17 @@ test.describe("search to preview, live", () => {
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Buy the company");
     await expectPersistentNotice(page);
 
-    // None of the plumbing vocabulary belongs in the default view.
+    // None of the plumbing vocabulary belongs in the default view. Matched on
+    // WORD boundaries: a company legitimately called "... Index ..." contains
+    // "dex", and flagging that would be the test misreading real data.
     const body = (await page.locator("body").textContent()) ?? "";
-    for (const jargon of ["slippage", "0x", "wrapper", "DEX", "swap"]) {
-      expect(body.toLowerCase(), `"${jargon}" must not appear on the home page`).not.toContain(
-        jargon.toLowerCase(),
+    for (const jargon of ["slippage", "wrapper", "DEX", "swap", "liquidity pool"]) {
+      expect(body, `"${jargon}" must not appear on the home page`).not.toMatch(
+        new RegExp(`\\b${jargon}\\b`, "i"),
       );
     }
+    // A contract address would start with 0x followed by hex.
+    expect(body).not.toMatch(/0x[0-9a-fA-F]{6,}/);
   });
 
   test("a ticker search goes to that company", async ({ page }) => {
@@ -117,11 +136,20 @@ test.describe("search to preview, live", () => {
     expect(body).not.toContain("bstock");
   });
 
-  test("a name search goes to the explore list", async ({ page }) => {
+  test("a NAME search stays on the explore list, even as a single word", async ({ page }) => {
+    // "corp" looks exactly like a ticker. Only the server knows it is not one,
+    // which is why the shortcut lives there and not in the search box.
     await page.goto("/");
     await page.getByTestId("search-input").fill("corp");
     await page.getByTestId("search-submit").click();
     await expect(page).toHaveURL(/\/explore\?q=corp/);
+    await expect(page.getByTestId("results")).toBeVisible();
+  });
+
+  test("a query matching NOTHING says so rather than guessing", async ({ page }) => {
+    await page.goto("/explore?q=zzzznotacompany");
+    await expect(page.getByTestId("no-results")).toContainText("Nothing in Orchard");
+    await expect(page.getByTestId("results")).toHaveCount(0);
   });
 
   test("the amount step states its bounds as product defaults", async ({ page }) => {

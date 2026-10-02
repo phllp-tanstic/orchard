@@ -6,9 +6,9 @@
   "license": "Apache-2.0",
   "description": "Orchard read-only consumer web app and BFF (spec F003 T1-T4). Server-only provider access; no wallet, no signing.",
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "node scripts/next-with-root-env.mjs dev --port 3000",
     "build": "next build",
-    "start": "next start --port 3000",
+    "start": "node scripts/next-with-root-env.mjs start --port 3000",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:e2e": "playwright test"
   },

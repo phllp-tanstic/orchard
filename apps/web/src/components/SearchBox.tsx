@@ -2,12 +2,19 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { TICKER_PATTERN } from "@/server/validation";
 
 /**
- * Search (F003 T4). Submitting an exact-looking ticker goes straight to that
- * company; anything else goes to the explore list. Validation here is only a
- * convenience - the server validates again and is the authority.
+ * Search (F003 T4).
+ *
+ * Every query goes to the explore list, which decides - on the server, with
+ * the snapshot in hand - whether it is an exact ticker and should jump
+ * straight to that company.
+ *
+ * This component deliberately does NOT make that decision itself. It used to
+ * treat any single ticker-shaped word as a ticker, which sent "nvidia"
+ * straight to /stock/NVIDIA and answered "Orchard does not support NVIDIA" for
+ * a company Orchard does support. The browser has no company list, so it
+ * cannot tell a ticker from a name; only the server can.
  */
 export function SearchBox({ initial = "" }: { initial?: string }) {
   const router = useRouter();
@@ -20,11 +27,7 @@ export function SearchBox({ initial = "" }: { initial?: string }) {
         event.preventDefault();
         const query = value.trim();
         if (query === "") return;
-        if (TICKER_PATTERN.test(query) && !query.includes(" ")) {
-          router.push(`/stock/${encodeURIComponent(query.toUpperCase())}`);
-        } else {
-          router.push(`/explore?q=${encodeURIComponent(query)}`);
-        }
+        router.push(`/explore?q=${encodeURIComponent(query)}`);
       }}
     >
       <div className="grow">
