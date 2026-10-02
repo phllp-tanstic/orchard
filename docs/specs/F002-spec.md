@@ -247,7 +247,8 @@ multi-representation tickers.
 A1 left a real gap: a route could be wildly mispriced yet eligible, and where it was the only
 candidate it would be selected. That gap is now closed by policy rather than left open.
 
-- `policy.maxReferenceDeviationBps`, default **"300"**, applied in **both** directions.
+- `policy.maxReferenceDeviationBps`, default **"500"** (DEC-038, raised from the 300 bps
+  this amendment originally set), applied in **both** directions.
 - `REFERENCE_PREMIUM_EXCEEDS_MAX` - implied per-share price above the `/rwa/price`
   referencePrice benchmark by more than the max. Overpaying against the provider's own mark.
 - `REFERENCE_DISCOUNT_SUSPECT` - below it by more than the max. Treated as suspect, not as a
@@ -259,15 +260,26 @@ candidate it would be selected. That gap is now closed by policy rather than lef
   `candidate_route.reference_unavailable`. It is **never** treated as zero deviation - an
   absence of evidence is not evidence of a good price.
 
-300 bps is a **product default, not a measured provider limit**. The evidence that informs it:
-across the 40-ticker batch the worst eligible candidate sat **91.3 bps** from its benchmark
-(median 18.1), and the two platforms agreed on the benchmark itself to within **49.6 bps**.
+The ceiling is a **product default, not a measured provider limit**. The evidence, from two
+live runs of the same 40 multi-representation tickers:
 
-A later run of the same 40 tickers (`probe_run 5dc1bdae-36fc-4c7b-b91e-0b5d863202e7`) showed
-a worst eligible deviation of **220.6 bps** (median 13.8). So the real headroom is about
-**1.4x**, not the 3x the first run suggested - healthy deviation moves with the market. The
-ceiling still separated every healthy candidate from every broken one in both runs, but it is
-the first number to revisit if a legitimate route is ever rejected.
+| Run                                    | Worst ELIGIBLE deviation | Median   |
+| -------------------------------------- | ------------------------ | -------- |
+| `eace2297-c3a1-44d7-bf60-14a279f3ebef` | 91.3 bps                 | 18.1 bps |
+| `5dc1bdae-36fc-4c7b-b91e-0b5d863202e7` | **220.6 bps**            | 13.8 bps |
+
+The two platforms also agreed on the benchmark itself to within **49.6 bps**.
+
+**DEC-038 raises the default from 300 bps to 500 bps.** At 300, the 220.6 bps observation left
+only about **1.4x** headroom - close enough that an ordinary market move could reject a
+legitimate route. 500 bps gives about **2.3x** against the worst healthy observation so far.
+
+Widening it costs no detection power, because the two populations are separated by orders of
+magnitude rather than by a few hundred bps: the broken routes lost **81% to 100%** of value and
+sat **thousands** of bps from their benchmark - 81149 bps, and up to 3.0e10 bps on the worst.
+
+500 bps remains a product default and remains **the first number to revisit if a legitimate
+route is ever rejected**.
 
 `maxPriceImpactBps` is now evidence-backed too: healthy live routes reported 0 to about 107
 bps, while four broken routes reported **93% to 99.96% impact** (9319-9996 bps). A 300 bps

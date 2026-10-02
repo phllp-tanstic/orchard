@@ -168,7 +168,7 @@ export function renderMarkdown(report: RouteProbeReport): string {
     `- Max price impact: ${report.policy.maxPriceImpactBps} bps (product default; evidence: healthy routes 0-107 bps, four broken routes 9319-9996 bps)`,
   );
   lines.push(
-    `- Max reference deviation: ${report.policy.maxReferenceDeviationBps} bps either way (DEC-037, product default; worst healthy observation 91.3 bps)`,
+    `- Max reference deviation: ${report.policy.maxReferenceDeviationBps} bps either way (DEC-038, product default; worst healthy observations 91.3 and 220.6 bps across two runs)`,
   );
   lines.push(`- Probe wallet (read-only, never signed for): \`${report.probeWalletAddress}\``);
   lines.push("");

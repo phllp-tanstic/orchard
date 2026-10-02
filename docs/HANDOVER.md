@@ -91,7 +91,7 @@ b44704bc-7870-474b-9c66-4688b6cbb9c1`).
   feasibility) is merged. **F002 T1-T5 are implemented and merged** (PR #17): the
   `@orchard/execution` domain (normalization, eligibility policy, deterministic ranking
   `f002-rank-1.0.0`), the orchestrator, the append-only `execution.*` schema
-  (migrations 008-009) and `pnpm route:probe`. DEC-037 adds the reference-deviation gate.
+  (migrations 008-009) and `pnpm route:probe`. DEC-037 adds the reference-deviation gate and DEC-038 sets its default to 500 bps.
   Live acceptance has been run: NVDA at 100 USDT with both representations quoted
   independently and the report reconciling byte-for-byte against the stored
   `provider_call` rows, and a 40-ticker batch
