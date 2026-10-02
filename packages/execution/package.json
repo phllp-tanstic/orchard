@@ -15,9 +15,12 @@
   },
   "dependencies": {
     "@orchard/rwa": "workspace:*",
-    "decimal.js": "^10.4.3"
+    "decimal.js": "^10.4.3",
+    "pg": "^8.23.0",
+    "@orchard/evidence": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.10.1"
+    "@types/node": "^22.10.1",
+    "@types/pg": "^8.23.1"
   }
 }

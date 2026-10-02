@@ -1,0 +1,13 @@
+DROP TRIGGER IF EXISTS route_decision_no_truncate ON execution.route_decision;
+DROP TRIGGER IF EXISTS route_decision_no_delete ON execution.route_decision;
+DROP TRIGGER IF EXISTS route_decision_no_update ON execution.route_decision;
+DROP TRIGGER IF EXISTS candidate_route_no_truncate ON execution.candidate_route;
+DROP TRIGGER IF EXISTS candidate_route_no_delete ON execution.candidate_route;
+DROP TRIGGER IF EXISTS candidate_route_no_update ON execution.candidate_route;
+DROP TRIGGER IF EXISTS execution_request_no_truncate ON execution.execution_request;
+DROP TRIGGER IF EXISTS execution_request_no_delete ON execution.execution_request;
+DROP TRIGGER IF EXISTS execution_request_no_update ON execution.execution_request;
+DROP TABLE IF EXISTS execution.route_decision;
+DROP TABLE IF EXISTS execution.candidate_route;
+DROP TABLE IF EXISTS execution.execution_request;
+DROP SCHEMA IF EXISTS execution;

@@ -98,7 +98,7 @@ export interface RepresentationInput {
   /** Token decimals from the RWA list; the quote's echoed value wins when present. */
   decimals: string;
   /** Per-share price from /rwa/price referencePrice (F002 Amendment A1). Optional. */
-  perSharePrice?: string;
+  perSharePrice?: string | undefined;
 }
 
 /**
@@ -123,36 +123,36 @@ export interface CandidateRoute {
   tokenToShareRatio: string;
 
   quoteProvider: QuoteProvider;
-  quoteId?: string;
+  quoteId?: string | undefined;
   /** Spend, smallest-unit integer string of the spend asset. */
   inputAmount: string;
   /** Spend as a decimal string in the spend asset's own units, e.g. "100". */
   inputAmountDecimal: string;
   /** Provider's toTokenAmount, verbatim smallest-unit string. */
-  expectedOutputTokenAmount?: string;
+  expectedOutputTokenAmount?: string | undefined;
   /** Decimals actually used to scale the output. */
-  toTokenDecimals?: string;
+  toTokenDecimals?: string | undefined;
   /** (toTokenAmount / 10^decimals) * tokenToShareRatio - exact. */
-  normalizedExpectedShares?: string;
+  normalizedExpectedShares?: string | undefined;
   /** inputAmountDecimal / normalizedExpectedShares - exact. */
-  effectivePricePerShare?: string;
+  effectivePricePerShare?: string | undefined;
   /** Per-share benchmark, /rwa/price referencePrice (Amendment A1). */
-  referencePrice?: string;
+  referencePrice?: string | undefined;
   /** Deviation of effectivePricePerShare from referencePrice, bps, exact string. */
-  referenceDeviationBps?: string;
+  referenceDeviationBps?: string | undefined;
   /** Provider priceImpactPercent converted to bps, exact string. */
-  priceImpactBps?: string;
-  tradeFee?: string | null;
-  estimateGasFee?: string | null;
+  priceImpactBps?: string | undefined;
+  tradeFee?: string | null | undefined;
+  estimateGasFee?: string | null | undefined;
   /** Open strings, never branched on (F002 section 2). */
-  executionMode?: string;
-  vendorName?: string;
+  executionMode?: string | undefined;
+  vendorName?: string | undefined;
 
-  quoteTimestamp?: string;
+  quoteTimestamp?: string | undefined;
   /** Whole seconds between the quote and the decision instant. */
-  quoteAgeSeconds?: number;
+  quoteAgeSeconds?: number | undefined;
   /** evidence.provider_call.id for the quote that produced this candidate. */
-  providerCallId?: string;
+  providerCallId?: string | undefined;
 
   eligibility: "ELIGIBLE" | "REJECTED";
   rejectionReasons: RejectionReason[];
