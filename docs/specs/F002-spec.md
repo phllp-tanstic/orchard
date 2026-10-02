@@ -127,3 +127,88 @@ Simulation, signing, wallet, Agentic Wallet, UI, amount adaptation (M6), share l
 
 Files changed | behavior implemented | tests run with exact results | blockers |
 deviations | unverified claims. Never say "best execution" for anything not shown by a stored live run.
+
+## 11. Amendment A1 - the per-share benchmark (supersedes section 2 where it conflicts)
+
+Status: APPROVED by the owner. Added after the section 2 confirmation was run.
+
+### What was wrong
+
+Section 2 says "tokenPrice / referencePrice equals tokenToShareRatio on /rwa/tokens, so one
+token represents tokenToShareRatio shares". The arithmetic is correct and the conclusion is
+correct. What section 2 does not say, and what a first pass got wrong, is **which field is the
+per-share price**. Checking the formula against `/rwa/tokens` `referencePrice` makes it look
+wrong by exactly a factor of `tokenToShareRatio`.
+
+### The rule
+
+Per Binance's tokenized-securities concept **"Token != Share"**: one token represents
+`tokenToShareRatio` (the shares multiplier) shares, and
+`referencePrice = tokenInfo.price / sharesMultiplier`.
+
+- **`/rwa/price` `referencePrice` is the per-underlying-share price.** It is the only
+  per-share field, and it is the benchmark any normalization check must use.
+- **`/rwa/tokens` `referencePrice` is a per-TOKEN price. It is NOT per-share.**
+- **`/rwa/tokens` `tokenPrice` is NOT per-share either** - it is the per-token price scaled up
+  again by `tokenToShareRatio`.
+- `/rwa/price` `tokenPrice` equals `/rwa/tokens` `referencePrice`: both are per-token.
+
+So, writing `T` for the per-token price and `R` for `tokenToShareRatio`:
+
+| Field                          | Quantity                |
+| ------------------------------ | ----------------------- |
+| `/rwa/tokens` `tokenPrice`     | `R x T`                 |
+| `/rwa/tokens` `referencePrice` | `T` (per token)         |
+| `/rwa/price` `tokenPrice`      | `T` (per token)         |
+| `/rwa/price` `referencePrice`  | `T / R` (**per share**) |
+
+### The formula, confirmed
+
+```
+normalizedShares      = (toTokenAmount / 10^decimals) * tokenToShareRatio
+impliedPricePerShare  = spendAmount / normalizedShares
+```
+
+The `10^decimals` step is the unit conversion from the provider's smallest-unit integer
+string to whole tokens; `decimals` is taken from the quote's own echoed `toToken.decimal`,
+falling back to the token list. Section 2 states the formula in token units and omits this
+step; it is required, not a deviation.
+
+### Evidence
+
+One short window, 2026-10-02T12:57:34.859Z to 12:57:58.501Z (23.6s), spend 100 USDT,
+`probe_run b44704bc-7870-474b-9c66-4688b6cbb9c1`. Population at that moment: 485 usable
+representations, of which **9 with ratio >= 2** and **2 with ratio <= 0.5**; 228 at ratio
+exactly 1 and 122 in [1.005, 1.03]. Sampled all 11 far-from-1 tokens plus 5 at ratio 1 and 5
+near 1; 19 of 21 produced a quote.
+
+`impliedPricePerShare` deviation from `/rwa/price` `referencePrice`:
+
+| Group            | Evaluated | Worst abs deviation | Outside +/-300 bps |
+| ---------------- | --------- | ------------------- | ------------------ |
+| ratio >= 2       | 9         | **51.4 bps**        | **0**              |
+| ratio <= 0.5     | 1         | 7.7 bps             | 0                  |
+| ratio == 1       | 5         | 32.5 bps            | 0                  |
+| ratio 1.005-1.03 | 4         | 22.3 bps            | 0                  |
+
+The criterion (ratio >= 2 within +/-300 bps) **passes**, with the worst case 6x inside it.
+Largest-ratio cases: `PPLTon` ratio 10 at 13.6 bps, `NFLXon` ratio 10 at 5.7 bps, `KLACon`
+ratio 10.026064925604903975 at 27.2 bps.
+
+Two selected tokens produced no quote and are listed rather than hidden - both are documented
+normal outcomes, not formula failures:
+
+| Token         | Ratio              | Provider code                  |
+| ------------- | ------------------ | ------------------------------ |
+| ondo `ENLVon` | 0.066667           | `40367` non-trading session    |
+| ondo `ORCLon` | 1.0079328914586566 | `40374` insufficient liquidity |
+
+### Carried risk, not resolved by this amendment
+
+The provider's "share" unit is the provider's own. It is not established that one provider
+share equals one exchange-listed share: for `PPLTon` the per-share benchmark is 15.71 while
+the real-world PPLT ETF trades near 155. That does not affect this spec, which compares
+representations **of the same underlying** against each other. It does mean a cross-platform
+comparison is only valid if both platforms use the same share unit for the same ticker, so
+T5's batch report records the per-share benchmark agreement between bStock and Ondo in bps
+rather than assuming it.
