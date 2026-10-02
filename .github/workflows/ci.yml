@@ -97,6 +97,26 @@ jobs:
       - name: Unit tests
         run: pnpm test -- --passWithNoTests
 
+      # F003 T1: build the web app and scan the CLIENT bundle for secret names,
+      # the real secret values, and contract-signing code. The build is needed
+      # because the scan inspects .next/static, i.e. exactly the bytes a browser
+      # would receive. Dummy values are supplied so server-only env validation
+      # passes at build time; they are obviously fake and are never real keys.
+      - name: Build web app
+        run: pnpm web:build
+        env:
+          BINANCE_WEB3_API_KEY: "(ci build placeholder, not a key)"
+          BINANCE_WEB3_API_SECRET: "(ci build placeholder, not a secret)"
+          BINANCE_WEB3_BASE_URL: https://web3.binance.com/build
+          TARGET_BINANCE_CHAIN_ID: "56"
+          EVIDENCE_REDACTION_SALT: "(ci build placeholder, not a salt)"
+
+      - name: Client bundle secret scan
+        run: pnpm test -- apps/web/src/server/bundle-scan.test.ts
+
+      - name: Web component tests
+        run: pnpm test:web -- --passWithNoTests
+
       - name: Migration up
         run: pnpm migrate:up
 

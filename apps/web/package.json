@@ -1,0 +1,35 @@
+{
+  "name": "@orchard/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Orchard read-only consumer web app and BFF (spec F003 T1-T4). Server-only provider access; no wallet, no signing.",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@orchard/binance": "workspace:*",
+    "@orchard/evidence": "workspace:*",
+    "@orchard/execution": "workspace:*",
+    "@orchard/rwa": "workspace:*",
+    "decimal.js": "^10.4.3",
+    "next": "15.5.27",
+    "pg": "^8.23.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "zod": "^3.23.8",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.1",
+    "@types/node": "^22.10.1",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3"
+  }
+}

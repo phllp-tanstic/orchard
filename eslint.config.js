@@ -18,21 +18,28 @@ export default [
       // so CI never sees them; ignoring them here keeps `eslint .` consistent
       // with that policy instead of failing on files that cannot be pushed.
       "scripts/scratch/**",
+      // Next build output and its generated types.
+      "apps/web/.next/**",
+      "apps/web/next-env.d.ts",
     ],
   },
   js.configs.recommended,
   {
-    files: ["**/*.ts"],
+    files: ["**/*.ts", "**/*.tsx"],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
         project: false,
         sourceType: "module",
         ecmaVersion: 2022,
+        // The web app is TSX; without this every component file is a parse error.
+        ecmaFeatures: { jsx: true },
       },
       globals: {
         ...globals.node,
         ...globals.es2021,
+        // Component and e2e code touches browser globals.
+        ...globals.browser,
       },
     },
     plugins: {
