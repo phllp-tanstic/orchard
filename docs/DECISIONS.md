@@ -238,6 +238,58 @@ Status vocabulary for decisions: `APPROVED`, `OPEN`.
   `"offhours"`, DEC-021 `"paused"`) turns each one into a failed probe run.
 - **Merged:** not yet - branch `fix/dec-022-marketstatus-open-string`.
 
+### DEC-005
+
+- **Status:** APPROVED
+- **Date:** 2026-10-02
+- **Decision:** assetType scope is **Stock and ETF**. Pre-IPO is out of scope. The engine
+  takes the allowed set as configuration (`allowedAssetTypes`), never a hardcoded literal,
+  and every report and persisted record carries the `assetType` so an ETF is never labelled
+  a stock. Reason: both are ordinary listed instruments with the same execution path, while
+  Pre-IPO carries different risk and disclosure.
+- **Supersedes:** the earlier OPEN entry ("stock only vs ETF and Pre-IPO", trigger F001-A).
+- **Merged:** not yet - branch `feat/f002-best-execution`.
+
+### DEC-026
+
+- **Status:** APPROVED (resolved 2026-10-02)
+- **Date:** 2026-09-29 (observed), 2026-10-02 (resolved)
+- **Decision:** `referencePrice` carries different units on the two RWA endpoints, and the
+  per-underlying-share price is **`/rwa/price` `referencePrice`**. Writing `T` for the
+  per-token price and `R` for `tokenToShareRatio`: `/rwa/tokens` `tokenPrice` is
+  `R x T`, `/rwa/tokens` `referencePrice` is `T` (**per token, NOT per share**),
+  `/rwa/price` `tokenPrice` is `T`, and `/rwa/price` `referencePrice` is `T / R`
+  (**per share**). Consistent with the Binance tokenized-securities rule that one token
+  represents `tokenToShareRatio` shares and
+  `referencePrice = tokenInfo.price / sharesMultiplier`.
+- **Reason:** the original DEVEX entry recorded the measurements correctly but labelled the
+  per-token quantity as per-share, which inverted the two. Confirmed live against quotes:
+  `probe_run b44704bc-7870-474b-9c66-4688b6cbb9c1`, ratio >= 2 group 9 of 9 within
+  51.4 bps of the per-share benchmark.
+- **Note:** `tools/probe/src/pipeline.ts` compares `/rwa/tokens` `referencePrice`
+  against `/rwa/price` `tokenPrice`; both are `T`, so that comparison was and remains
+  same-unit and correct.
+- **Merged:** not yet - branch `feat/f002-best-execution`.
+
+### DEC-035
+
+- **Status:** APPROVED
+- **Date:** 2026-10-02
+- **Decision:** `docs/specs/F002-spec.md` (Feature 002, deterministic best execution
+  engine, M2) is approved as written, together with Amendment A1, which names
+  `/rwa/price` `referencePrice` as the per-share benchmark and records the live evidence
+  that the normalization formula passes.
+- **Merged:** not yet - branch `feat/f002-best-execution`.
+
+### DEC-036
+
+- **Status:** APPROVED
+- **Date:** 2026-10-02
+- **Decision:** `maxQuoteAgeSeconds` default is **20**. Reason: the measured quote expiry is
+  about 30s - a `quoteId` reused after 35s returned `40401` (F001-B) - so 20 leaves
+  headroom to act on a quote before it expires. It is a policy field, not a constant.
+- **Merged:** not yet - branch `feat/f002-best-execution`.
+
 ## Open
 
 ### DEC-003
@@ -251,12 +303,6 @@ Status vocabulary for decisions: `APPROVED`, `OPEN`.
 - **Status:** OPEN
 - **Decision:** Meaning of "simulated" per execution mode, RFQ vs calldata.
 - **Trigger:** F001-B.
-
-### DEC-005
-
-- **Status:** OPEN
-- **Decision:** assetType scope, stock only vs ETF and Pre-IPO.
-- **Trigger:** F001-A results.
 
 ### DEC-006
 
