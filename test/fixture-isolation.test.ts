@@ -37,7 +37,7 @@ function listFiles(dir: string, ignore: RegExp): string[] {
   return out;
 }
 
-const IGNORE = /^(node_modules|\.git|dist|coverage|\.turbo)$/;
+const IGNORE = /^(node_modules|\.git|dist|coverage|\.turbo|\.next)$/;
 
 describe("fixture isolation", () => {
   it("no non-test src/ file imports from a test/fixtures/ path", () => {
@@ -46,6 +46,9 @@ describe("fixture isolation", () => {
     // "never imported from src" means never from runtime (non-test) code.
     const srcFiles = listFiles(join(REPO_ROOT, "packages"), IGNORE)
       .concat(listFiles(join(REPO_ROOT, "tools"), IGNORE))
+      // F003 adds apps/: the web app is runtime code like any other, so a
+      // fixture reaching a page or an API route must fail here too.
+      .concat(listFiles(join(REPO_ROOT, "apps"), IGNORE))
       .filter(
         (f) =>
           /[\\/]src[\\/]/.test(f) && /\.(ts|tsx|js|mjs)$/.test(f) && !/\.test\.[jt]sx?$/.test(f),
