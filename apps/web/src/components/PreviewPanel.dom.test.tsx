@@ -22,6 +22,12 @@ const CAPS: Capabilities = {
   agenticWallet: false,
   shareIntent: false,
   fundedGifting: false,
+  providerCheck: {
+    checkedAt: "2026-10-02T12:00:00.000Z",
+    ageSeconds: 0,
+    ttlSeconds: 60,
+    fresh: true,
+  },
   details: {
     algorithmVersion: "f002-rank-1.0.0",
     spendAssetSymbol: "USDT",
@@ -33,6 +39,10 @@ const CAPS: Capabilities = {
     maxReferenceDeviationBps: "500",
     allowedAssetTypes: [1, 3],
     snapshotMaxAgeSeconds: 21600,
+    previewRateLimit: { max: 10, windowSeconds: 60 },
+    readRateLimit: { max: 60, windowSeconds: 60 },
+    rateLimitsAreProductDefaults: true,
+    trustedProxyHops: 1,
     singleServerInstanceAssumed: true,
     executionNotLiveReason:
       "Execution is not live yet. Nothing in this app signs, submits or broadcasts a transaction.",

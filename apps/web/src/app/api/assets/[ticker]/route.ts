@@ -1,5 +1,5 @@
 import type { NextRequest, NextResponse } from "next/server";
-import { apiError, apiOk } from "@/server/api";
+import { apiError, apiOk, enforceRateLimit, readRateLimiter } from "@/server/api";
 import { db } from "@/server/db";
 import { findUnderlying, representationsOf, snapshotMeta } from "@/server/universe";
 import { tickerSchema } from "@/server/validation";
@@ -15,9 +15,12 @@ export const dynamic = "force-dynamic";
  * "Why this route?" drawer, which reads them from the preview response.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ ticker: string }> },
 ): Promise<NextResponse> {
+  const limit = enforceRateLimit(request, readRateLimiter, "requests");
+  if (limit.response !== undefined) return limit.response;
+
   const { ticker: raw } = await context.params;
   const parsed = tickerSchema.safeParse(raw);
   if (!parsed.success) {
@@ -36,24 +39,27 @@ export async function GET(
       return apiError("NOT_FOUND", `Orchard does not support ${parsed.data} today.`);
     }
     const representations = await representationsOf(pool, parsed.data);
-    return apiOk({
-      asset: {
-        ticker: underlying.ticker,
-        companyName: underlying.companyName,
-        assetTypeLabel: underlying.assetTypeLabel,
-        representationCount: underlying.representationCount,
-        marketStatuses: underlying.marketStatuses,
-        anyMarketOpen: underlying.anyMarketOpen,
-        // Every stored representation reports its own market status; a null is
-        // reported as null rather than guessed as open or closed (DEC-020:
-        // bStock returns a null marketStatus).
-        marketStatusByPlatform: representations.map((r) => ({
-          platform: r.platformId,
-          marketStatus: r.marketStatus,
-        })),
+    return apiOk(
+      {
+        asset: {
+          ticker: underlying.ticker,
+          companyName: underlying.companyName,
+          assetTypeLabel: underlying.assetTypeLabel,
+          representationCount: underlying.representationCount,
+          marketStatuses: underlying.marketStatuses,
+          anyMarketOpen: underlying.anyMarketOpen,
+          // Every stored representation reports its own market status; a null is
+          // reported as null rather than guessed as open or closed (DEC-020:
+          // bStock returns a null marketStatus).
+          marketStatusByPlatform: representations.map((r) => ({
+            platform: r.platformId,
+            marketStatus: r.marketStatus,
+          })),
+        },
+        snapshot,
       },
-      snapshot,
-    });
+      limit.headers,
+    );
   } catch {
     return apiError("INTERNAL", "That company could not be loaded.");
   }

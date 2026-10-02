@@ -47,9 +47,34 @@ const schema = z.object({
     .int()
     .positive()
     .default(6 * 60 * 60),
-  /** Per-IP request budget for the preview endpoint. */
+  /**
+   * Per-IP request budget for the PREVIEW endpoint. Strict, because one
+   * preview costs one authenticated quote per representation.
+   */
   WEB_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
   WEB_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+  /**
+   * Per-IP budget for the READ endpoints (assets, health, capabilities).
+   * Looser: these read the stored snapshot or a cached provider check, so they
+   * cost the provider nothing. Still bounded, so a scraper cannot pin the
+   * database. A product default, not a measured limit.
+   */
+  WEB_READ_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(60),
+  WEB_READ_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+  /**
+   * How long a provider reachability check is reused by /api/health and
+   * /api/capabilities. Both report checkedAt and ageSeconds, so a cached
+   * answer is never presented as a fresh one. A product default.
+   */
+  WEB_PROVIDER_CHECK_TTL_SECONDS: z.coerce.number().int().positive().default(60),
+  /**
+   * How many reverse proxies sit between the internet and this server. The
+   * client IP is the Nth X-Forwarded-For entry FROM THE RIGHT, because a
+   * client can send its own header and the proxy appends to it. Set this to
+   * match the deployment; too high or too low both fall back to one shared
+   * rate-limit bucket rather than trusting a client-supplied value.
+   */
+  WEB_TRUSTED_PROXY_HOPS: z.coerce.number().int().positive().default(1),
   /**
    * Process-wide ceiling on previews in flight. The provider allows 5 req/s
    * per endpoint and a preview costs one quote PER representation, so public

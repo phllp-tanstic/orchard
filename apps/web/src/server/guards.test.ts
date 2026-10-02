@@ -4,6 +4,7 @@ import {
   ConcurrencyBudget,
   RateLimiter,
   SingleFlight,
+  SingleFlightCache,
   clientIpOf,
   isPreviewExpired,
   type Clock,
@@ -218,20 +219,205 @@ describe("isPreviewExpired", () => {
   });
 });
 
-describe("clientIpOf", () => {
-  it("takes the FIRST x-forwarded-for entry (the client, not the proxy)", () => {
-    const headers = new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1, 10.0.0.2" });
-    expect(clientIpOf(headers)).toBe("203.0.113.7");
+describe("clientIpOf (trusted proxy hops)", () => {
+  const xff = (value: string) => new Headers({ "x-forwarded-for": value });
+
+  it("takes the Nth entry FROM THE RIGHT, not the first", () => {
+    // One proxy: the entry it observed is the last one. Everything to its left
+    // was supplied by the client.
+    expect(clientIpOf(xff("203.0.113.7, 10.0.0.1, 198.51.100.9"), 1)).toBe("198.51.100.9");
+    expect(clientIpOf(xff("203.0.113.7, 10.0.0.1, 198.51.100.9"), 2)).toBe("10.0.0.1");
+    expect(clientIpOf(xff("203.0.113.7, 10.0.0.1, 198.51.100.9"), 3)).toBe("203.0.113.7");
   });
 
-  it("falls back to x-real-ip", () => {
-    expect(clientIpOf(new Headers({ "x-real-ip": "203.0.113.9" }))).toBe("203.0.113.9");
+  it("EXTRA LEADING ENTRIES CANNOT CHANGE THE BUCKET", () => {
+    // The attack this replaces: a client sends its own X-Forwarded-For, the
+    // proxy appends to it, and a limiter keyed on the leftmost entry gives
+    // that client a fresh bucket on every request.
+    const real = clientIpOf(xff("198.51.100.9"), 1);
+    for (const spoofed of [
+      "1.2.3.4, 198.51.100.9",
+      "5.6.7.8, 1.2.3.4, 198.51.100.9",
+      "not-an-ip, 198.51.100.9",
+      "198.51.100.1, 198.51.100.2, 198.51.100.3, 198.51.100.9",
+      "::1, 198.51.100.9",
+    ]) {
+      expect(clientIpOf(xff(spoofed), 1), spoofed).toBe(real);
+    }
+  });
+
+  it("a client cannot escape its bucket by varying what it prepends", () => {
+    const buckets = new Set(
+      [
+        "198.51.100.9",
+        "a, 198.51.100.9",
+        "b, c, 198.51.100.9",
+        "999.999.999.999, 198.51.100.9",
+      ].map((v) => clientIpOf(xff(v), 1)),
+    );
+    expect(buckets.size).toBe(1);
+  });
+
+  it("uses the SHARED bucket when the header is shorter than the hop count", () => {
+    // Fewer entries than expected means the request did not traverse the
+    // configured proxies, so nothing in it identifies the client.
+    expect(clientIpOf(xff("198.51.100.9"), 2)).toBe("unknown");
+    expect(clientIpOf(xff("10.0.0.1, 198.51.100.9"), 3)).toBe("unknown");
+  });
+
+  it("uses the SHARED bucket when the chosen entry is not an address", () => {
+    // Free text must never become a bucket key - that is a fresh bucket per
+    // request for anyone who wants one.
+    expect(clientIpOf(xff("10.0.0.1, haxx"), 1)).toBe("unknown");
+    expect(clientIpOf(xff("10.0.0.1, 300.1.2.3"), 1)).toBe("unknown");
+    expect(clientIpOf(xff("10.0.0.1, 1.2.3"), 1)).toBe("unknown");
+    expect(clientIpOf(xff("10.0.0.1, <script>"), 1)).toBe("unknown");
+  });
+
+  it("tolerates whitespace and empty entries without shifting the count", () => {
+    expect(clientIpOf(xff("  10.0.0.1 ,, 198.51.100.9  "), 1)).toBe("198.51.100.9");
+    expect(clientIpOf(xff("  10.0.0.1 ,, 198.51.100.9  "), 2)).toBe("10.0.0.1");
+  });
+
+  it("accepts IPv6 and strips a port", () => {
+    expect(clientIpOf(xff("2001:DB8::1"), 1)).toBe("2001:db8::1");
+    expect(clientIpOf(xff("[2001:db8::1]:443"), 1)).toBe("2001:db8::1");
+    expect(clientIpOf(xff("198.51.100.9:54321"), 1)).toBe("198.51.100.9");
+  });
+
+  it("defaults to one hop, and ignores a nonsense hop count", () => {
+    expect(clientIpOf(xff("1.2.3.4, 198.51.100.9"))).toBe("198.51.100.9");
+    expect(clientIpOf(xff("1.2.3.4, 198.51.100.9"), 0)).toBe("198.51.100.9");
+    expect(clientIpOf(xff("1.2.3.4, 198.51.100.9"), -5)).toBe("198.51.100.9");
+    expect(clientIpOf(xff("1.2.3.4, 198.51.100.9"), 1.5)).toBe("198.51.100.9");
+  });
+
+  it("consults x-real-ip ONLY when x-forwarded-for is absent", () => {
+    expect(clientIpOf(new Headers({ "x-real-ip": "203.0.113.9" }), 1)).toBe("203.0.113.9");
+    // Present but unusable: the fallback must not become a way around the
+    // hop count, so this stays in the shared bucket.
+    expect(
+      clientIpOf(new Headers({ "x-forwarded-for": "haxx", "x-real-ip": "203.0.113.9" }), 1),
+    ).toBe("unknown");
+    expect(clientIpOf(new Headers({ "x-real-ip": "nonsense" }), 1)).toBe("unknown");
   });
 
   it("falls back to a SHARED bucket rather than letting everything through", () => {
-    // With no header, an empty key per request would disable the limiter
-    // entirely; one shared bucket degrades safely instead.
-    expect(clientIpOf(new Headers())).toBe("unknown");
-    expect(clientIpOf(new Headers({ "x-forwarded-for": "   " }))).toBe("unknown");
+    expect(clientIpOf(new Headers(), 1)).toBe("unknown");
+    expect(clientIpOf(new Headers({ "x-forwarded-for": "   " }), 1)).toBe("unknown");
+    expect(clientIpOf(new Headers({ "x-forwarded-for": ",,," }), 1)).toBe("unknown");
+  });
+});
+
+describe("SingleFlightCache", () => {
+  it("runs the work once and reuses it inside the TTL", async () => {
+    const clock = fakeClock();
+    const cache = new SingleFlightCache<number>(60_000, clock);
+    let calls = 0;
+    const fn = async () => {
+      calls += 1;
+      return calls;
+    };
+
+    const first = await cache.get(fn);
+    expect(first.value).toBe(1);
+    expect(first.fresh).toBe(true);
+    expect(first.ageSeconds).toBe(0);
+
+    clock.advance(30_000);
+    const second = await cache.get(fn);
+    expect(calls).toBe(1);
+    expect(second.value).toBe(1);
+    expect(second.fresh).toBe(false);
+    expect(second.ageSeconds).toBe(30);
+  });
+
+  it("re-runs once the TTL has passed", async () => {
+    const clock = fakeClock();
+    const cache = new SingleFlightCache<number>(60_000, clock);
+    let calls = 0;
+    const fn = async () => {
+      calls += 1;
+      return calls;
+    };
+    await cache.get(fn);
+    clock.advance(60_001);
+    const again = await cache.get(fn);
+    expect(calls).toBe(2);
+    expect(again.value).toBe(2);
+    expect(again.ageSeconds).toBe(0);
+    expect(again.fresh).toBe(true);
+  });
+
+  it("treats exactly the TTL as still valid", async () => {
+    const clock = fakeClock();
+    const cache = new SingleFlightCache<number>(60_000, clock);
+    let calls = 0;
+    await cache.get(async () => ++calls);
+    clock.advance(60_000);
+    await cache.get(async () => ++calls);
+    expect(calls).toBe(1);
+  });
+
+  it("COALESCES concurrent callers into one run", async () => {
+    // This is the point: /api/health and /api/capabilities on the same page
+    // must not make two authenticated provider calls.
+    const cache = new SingleFlightCache<string>(60_000, fakeClock());
+    let calls = 0;
+    let release: (v: string) => void = () => {};
+    const pending = new Promise<string>((resolve) => {
+      release = resolve;
+    });
+    const fn = () => {
+      calls += 1;
+      return pending;
+    };
+
+    const a = cache.get(fn);
+    const b = cache.get(fn);
+    expect(calls).toBe(1);
+    release("ok");
+    expect((await a).value).toBe("ok");
+    expect((await b).value).toBe("ok");
+    expect(calls).toBe(1);
+  });
+
+  it("caches a FAILED observation too, and reports its age", async () => {
+    // A provider that did not answer is a real measurement. Re-checking it on
+    // every request is exactly the stampede this cache exists to prevent; the
+    // age is what keeps the answer honest.
+    const clock = fakeClock();
+    const cache = new SingleFlightCache<{ ok: boolean }>(60_000, clock);
+    let calls = 0;
+    const fn = async () => {
+      calls += 1;
+      return { ok: false };
+    };
+    await cache.get(fn);
+    clock.advance(10_000);
+    const second = await cache.get(fn);
+    expect(calls).toBe(1);
+    expect(second.value.ok).toBe(false);
+    expect(second.ageSeconds).toBe(10);
+  });
+
+  it("does NOT cache a thrown error, and recovers on the next call", async () => {
+    // A transient bug must not pin the app into a failing state for a TTL.
+    const cache = new SingleFlightCache<number>(60_000, fakeClock());
+    await expect(cache.get(() => Promise.reject(new Error("boom")))).rejects.toThrow("boom");
+    expect((await cache.get(async () => 7)).value).toBe(7);
+  });
+
+  it("clear() forces the next call to measure again", async () => {
+    const cache = new SingleFlightCache<number>(60_000, fakeClock());
+    let calls = 0;
+    await cache.get(async () => ++calls);
+    cache.clear();
+    await cache.get(async () => ++calls);
+    expect(calls).toBe(2);
+  });
+
+  it("reports its TTL in seconds", () => {
+    expect(new SingleFlightCache<number>(60_000).ttlSeconds).toBe(60);
   });
 });

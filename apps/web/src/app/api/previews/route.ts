@@ -3,13 +3,13 @@ import {
   BudgetExhaustedError,
   apiError,
   apiOk,
+  enforceRateLimit,
   previewBudget,
   previewFlight,
   previewRateLimiter,
 } from "@/server/api";
 import { db } from "@/server/db";
 import { serverEnv } from "@/server/env";
-import { clientIpOf } from "@/server/guards";
 import { ProviderUnavailableError, UnknownTickerError, runPreview } from "@/server/preview";
 import { checkAmount, previewBodySchema } from "@/server/validation";
 
@@ -58,14 +58,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   }
 
-  const ip = clientIpOf(request.headers);
-  const limit = previewRateLimiter().check(ip);
-  if (!limit.allowed) {
-    return apiError(
-      "RATE_LIMITED",
-      `Too many previews from this address. Try again in ${limit.retryAfterSeconds}s.`,
-    );
-  }
+  const limit = enforceRateLimit(request, previewRateLimiter, "previews");
+  if (limit.response !== undefined) return limit.response;
 
   const key = `${parsed.data.ticker}:${parsed.data.amount}`;
   try {
@@ -74,7 +68,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         runPreview({ pool: db(), ticker: parsed.data.ticker, amount: parsed.data.amount }),
       ),
     );
-    return apiOk(dto, { "X-RateLimit-Remaining": String(limit.remaining) });
+    return apiOk(dto, limit.headers);
   } catch (err) {
     if (err instanceof BudgetExhaustedError) {
       return apiError(

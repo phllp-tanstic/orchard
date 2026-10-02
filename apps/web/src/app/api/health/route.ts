@@ -1,28 +1,47 @@
-import { NextResponse } from "next/server";
-import { BinanceWeb3Client } from "@orchard/binance";
+import type { NextRequest, NextResponse } from "next/server";
+import { apiJson, enforceRateLimit, readRateLimiter } from "@/server/api";
 import { db } from "@/server/db";
-import { serverEnv } from "@/server/env";
+import { providerReachability } from "@/server/provider-health";
 import { snapshotMeta } from "@/server/universe";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/health (F003 T2): database reachability, provider reachability and
- * universe freshness. Each is MEASURED on this request; nothing is cached and
- * nothing is assumed healthy.
+ * GET /api/health (F003 T2, hardened): database reachability, provider
+ * reachability and universe freshness.
  *
- * The provider check is one read-only /rwa/platforms call - the cheapest
- * authenticated endpoint - so health does not burn the quote budget.
+ * The database and snapshot checks run on EVERY request - they are local and
+ * cheap. The provider check comes from the shared cache in provider-health, so
+ * /api/health and /api/capabilities cost one authenticated call between them
+ * rather than one each, and a polling monitor cannot burn the provider budget.
+ * `checkedAt` and `ageSeconds` travel with it, so a cached observation is
+ * never presented as a fresh one.
+ *
+ * This endpoint is READINESS: it answers 503 when a dependency is down, which
+ * is what a load balancer should act on. /api/live is the liveness probe and
+ * touches nothing.
  */
-export async function GET(): Promise<NextResponse> {
-  const checks: Record<string, { ok: boolean; detail?: string; latencyMs?: number }> = {};
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const limit = enforceRateLimit(request, readRateLimiter, "health checks");
+  if (limit.response !== undefined) return limit.response;
+
+  const checks: Record<
+    string,
+    { ok: boolean; detail?: string; latencyMs?: number; checkedAt?: string; ageSeconds?: number }
+  > = {};
 
   let databaseOk = false;
   const dbStart = Date.now();
+  const dbCheckedAt = new Date();
   try {
     await db().query("SELECT 1");
     databaseOk = true;
-    checks["database"] = { ok: true, latencyMs: Date.now() - dbStart };
+    checks["database"] = {
+      ok: true,
+      latencyMs: Date.now() - dbStart,
+      checkedAt: dbCheckedAt.toISOString(),
+      ageSeconds: 0,
+    };
   } catch (err) {
     checks["database"] = {
       ok: false,
@@ -30,40 +49,23 @@ export async function GET(): Promise<NextResponse> {
       // response body, and pg puts the host in some error messages.
       detail: err instanceof Error ? err.name : "unknown error",
       latencyMs: Date.now() - dbStart,
+      checkedAt: dbCheckedAt.toISOString(),
+      ageSeconds: 0,
     };
   }
 
-  let providerOk = false;
-  let providerCode: string | undefined;
-  const provStart = Date.now();
-  try {
-    const env = serverEnv();
-    const client = new BinanceWeb3Client({
-      apiKey: env.BINANCE_WEB3_API_KEY,
-      apiSecret: env.BINANCE_WEB3_API_SECRET,
-      baseUrl: env.BINANCE_WEB3_BASE_URL,
-    });
-    const res = await client.request<unknown>({
-      method: "GET",
-      path: "/api/v1/dex/market/rwa/platforms",
-    });
-    providerCode = String(res.envelope.code);
-    providerOk = providerCode === "0";
-    checks["provider"] = {
-      ok: providerOk,
-      detail: `code ${providerCode}`,
-      latencyMs: Date.now() - provStart,
-    };
-  } catch (err) {
-    checks["provider"] = {
-      ok: false,
-      detail: err instanceof Error ? err.message.slice(0, 200) : "unknown error",
-      latencyMs: Date.now() - provStart,
-    };
-  }
+  const provider = await providerReachability();
+  checks["provider"] = {
+    ok: provider.value.ok,
+    detail: provider.value.detail,
+    latencyMs: provider.value.latencyMs,
+    checkedAt: provider.checkedAt.toISOString(),
+    ageSeconds: provider.ageSeconds,
+  };
 
   let snapshot: Awaited<ReturnType<typeof snapshotMeta>> | undefined;
   if (databaseOk) {
+    const snapCheckedAt = new Date();
     try {
       snapshot = await snapshotMeta(db());
       checks["universe"] = {
@@ -72,22 +74,34 @@ export async function GET(): Promise<NextResponse> {
           snapshot.snapshotAt === null
             ? "no COMPLETE snapshot run exists yet"
             : `${snapshot.underlyingCount} underlyings, age ${snapshot.ageSeconds}s, max ${snapshot.maxAgeSeconds}s`,
+        checkedAt: snapCheckedAt.toISOString(),
+        ageSeconds: 0,
       };
     } catch {
-      checks["universe"] = { ok: false, detail: "snapshot query failed" };
+      checks["universe"] = {
+        ok: false,
+        detail: "snapshot query failed",
+        checkedAt: snapCheckedAt.toISOString(),
+        ageSeconds: 0,
+      };
     }
   }
 
   const ok = Object.values(checks).every((c) => c.ok);
-  return NextResponse.json(
-    {
-      ok,
-      checks,
-      snapshot: snapshot ?? null,
-      // Deliberately NOT a version string pulled from package.json: that would
-      // imply a release process this feature does not have.
-      note: "Read-only app. Nothing here signs, submits or broadcasts a transaction.",
-    },
-    { status: ok ? 200 : 503, headers: { "Cache-Control": "no-store" } },
-  );
+  const body = {
+    ok,
+    // The oldest observation in this response. A reader should judge the whole
+    // answer by its weakest leg, the same rule the preview expiry uses.
+    checkedAt: provider.checkedAt.toISOString(),
+    ageSeconds: Math.max(...Object.values(checks).map((c) => c.ageSeconds ?? 0)),
+    checks,
+    snapshot: snapshot ?? null,
+    // Deliberately NOT a version string pulled from package.json: that would
+    // imply a release process this feature does not have.
+    note: "Read-only app. Nothing here signs, submits or broadcasts a transaction.",
+  };
+
+  // 503 when a dependency is down: that is the signal a load balancer acts on,
+  // and the body still carries every measurement behind the verdict.
+  return apiJson(body, ok ? 200 : 503, limit.headers);
 }

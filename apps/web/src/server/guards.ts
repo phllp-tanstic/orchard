@@ -102,6 +102,87 @@ export class SingleFlight<T> {
   }
 }
 
+// --- cached check ------------------------------------------------------------
+
+export interface CachedValue<T> {
+  value: T;
+  /** When the underlying work actually ran. */
+  checkedAt: Date;
+  /** Whole seconds since then. 0 means this request did the work. */
+  ageSeconds: number;
+  /** True when this request did the work rather than reading the cache. */
+  fresh: boolean;
+}
+
+/**
+ * One in-process cache with single-flight, for a check that is expensive and
+ * shared. /api/health and /api/capabilities both need provider reachability,
+ * and without this a page that calls both makes two authenticated provider
+ * calls, and a refresh storm makes two per visitor.
+ *
+ * The RESULT is cached whether the check succeeded or failed, because the
+ * result is the observation either way - a 60-second-old "the provider did not
+ * answer" is still a real measurement, and every response carries `checkedAt`
+ * and `ageSeconds` so a reader can see exactly how old it is rather than
+ * having to assume it is current.
+ *
+ * A THROWN error is not cached: the entry is dropped and the error propagates,
+ * so a transient bug cannot pin the app into a failing state for a whole TTL.
+ */
+export class SingleFlightCache<T> {
+  private entry: { value: T; checkedAt: number } | undefined;
+  private inFlight: Promise<T> | undefined;
+
+  constructor(
+    private readonly ttlMs: number,
+    private readonly clock: Clock = systemClock,
+  ) {}
+
+  async get(fn: () => Promise<T>): Promise<CachedValue<T>> {
+    const now = this.clock.now();
+    if (this.entry !== undefined && now - this.entry.checkedAt <= this.ttlMs) {
+      return this.describe(this.entry, now, false);
+    }
+
+    if (this.inFlight === undefined) {
+      this.inFlight = (async () => fn())()
+        .then((value) => {
+          this.entry = { value, checkedAt: this.clock.now() };
+          return value;
+        })
+        .finally(() => {
+          this.inFlight = undefined;
+        });
+    }
+    await this.inFlight;
+    // `entry` is set by the branch above; a rejection never reaches here.
+    const settled = this.entry as { value: T; checkedAt: number };
+    return this.describe(settled, this.clock.now(), true);
+  }
+
+  private describe(
+    entry: { value: T; checkedAt: number },
+    now: number,
+    fresh: boolean,
+  ): CachedValue<T> {
+    return {
+      value: entry.value,
+      checkedAt: new Date(entry.checkedAt),
+      ageSeconds: Math.max(0, Math.floor((now - entry.checkedAt) / 1000)),
+      fresh,
+    };
+  }
+
+  /** Test-only, and used when configuration changes. Never called per request. */
+  clear(): void {
+    this.entry = undefined;
+  }
+
+  get ttlSeconds(): number {
+    return Math.floor(this.ttlMs / 1000);
+  }
+}
+
 // --- concurrency budget ------------------------------------------------------
 
 export class BudgetExhaustedError extends Error {
@@ -158,17 +239,80 @@ export function isPreviewExpired(
   return (now.getTime() - quoted) / 1000 > maxQuoteAgeSeconds;
 }
 
+// --- client identity ---------------------------------------------------------
+
+/** The shared bucket for requests whose origin cannot be established. */
+export const UNKNOWN_CLIENT = "unknown";
+
+const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+
 /**
- * The client IP, from the proxy headers a single Node server behind a platform
- * router normally sees. Falls back to a constant so the limiter still works
- * (shared bucket) rather than silently letting everything through when no
- * header is present.
+ * A conservative check that a token is an address rather than arbitrary text.
+ * X-Forwarded-For is attacker-controlled, so an entry that is not an address
+ * must not become a rate-limit bucket key - otherwise a client can mint a
+ * fresh bucket per request just by varying the string.
  */
-export function clientIpOf(headers: Headers): string {
-  const forwarded = headers.get("x-forwarded-for");
-  if (forwarded !== null && forwarded.trim() !== "") {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first !== undefined && first !== "") return first;
+function normaliseIp(raw: string): string | undefined {
+  let value = raw.trim();
+  if (value === "") return undefined;
+
+  // `[::1]:1234` - bracketed IPv6 with a port.
+  const bracketed = /^\[([0-9a-fA-F:.]+)\](?::\d{1,5})?$/.exec(value);
+  if (bracketed?.[1] !== undefined) value = bracketed[1];
+  // `1.2.3.4:1234` - IPv4 with a port. Bare IPv6 also contains colons, so only
+  // strip when exactly one colon is present and the left side is IPv4-shaped.
+  else if ((value.match(/:/g) ?? []).length === 1 && IPV4.test(value.split(":")[0] ?? "")) {
+    value = value.split(":")[0] ?? value;
   }
-  return headers.get("x-real-ip") ?? "unknown";
+
+  const v4 = IPV4.exec(value);
+  if (v4 !== null) {
+    return v4.slice(1).every((octet) => Number(octet) <= 255) ? value : undefined;
+  }
+  // IPv6: hex groups, colons, and the IPv4-mapped tail form. Not a full
+  // validator - just enough that free text cannot pass.
+  if (/^[0-9a-fA-F:]*:[0-9a-fA-F:.]*$/.test(value) && /[0-9a-fA-F]/.test(value)) {
+    return value.toLowerCase();
+  }
+  return undefined;
+}
+
+/**
+ * The client IP, counted from the RIGHT of X-Forwarded-For.
+ *
+ * This used to take the first entry, which is wrong in a way that matters: a
+ * client can send its own X-Forwarded-For, and the proxy APPENDS to it, so the
+ * leftmost entry is whatever the client claimed. Rate limiting on that means
+ * one visitor can have unlimited buckets.
+ *
+ * `trustedHops` is how many proxies sit between the internet and this server
+ * (default 1: one platform router). The entry that proxy observed is the Nth
+ * from the right, and everything to its left is unverifiable.
+ *
+ * A header that is absent, malformed, or shorter than the configured hop count
+ * yields the shared UNKNOWN_CLIENT bucket: degrading into one shared bucket
+ * limits too much, which is safe, whereas trusting a client-supplied value
+ * limits nothing at all.
+ */
+export function clientIpOf(headers: Headers, trustedHops = 1): string {
+  const hops = Number.isInteger(trustedHops) && trustedHops >= 1 ? trustedHops : 1;
+  const forwarded = headers.get("x-forwarded-for");
+
+  if (forwarded !== null && forwarded.trim() !== "") {
+    const entries = forwarded
+      .split(",")
+      .map((e) => e.trim())
+      .filter((e) => e !== "");
+    // Too short means this request did not traverse the expected proxies, so
+    // no entry in it can be trusted as the client.
+    if (entries.length < hops) return UNKNOWN_CLIENT;
+    return normaliseIp(entries[entries.length - hops] ?? "") ?? UNKNOWN_CLIENT;
+  }
+
+  // Only consulted when X-Forwarded-For is absent entirely - a proxy that sets
+  // X-Real-IP alone. Still validated, for the same reason.
+  const realIp = headers.get("x-real-ip");
+  if (realIp !== null) return normaliseIp(realIp) ?? UNKNOWN_CLIENT;
+
+  return UNKNOWN_CLIENT;
 }

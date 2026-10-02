@@ -1,5 +1,5 @@
 import type { NextRequest, NextResponse } from "next/server";
-import { apiError, apiOk } from "@/server/api";
+import { apiError, apiOk, enforceRateLimit, readRateLimiter } from "@/server/api";
 import { db } from "@/server/db";
 import { searchUnderlyings, snapshotMeta } from "@/server/universe";
 import { searchQuerySchema } from "@/server/validation";
@@ -14,6 +14,9 @@ export const dynamic = "force-dynamic";
  * banner rather than presenting old data as current.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const limit = enforceRateLimit(request, readRateLimiter, "searches");
+  if (limit.response !== undefined) return limit.response;
+
   const url = new URL(request.url);
   const parsed = searchQuerySchema.safeParse({
     q: url.searchParams.get("q") ?? "",
@@ -37,7 +40,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         "The company list has not been built yet. Run pnpm universe:refresh.",
       );
     }
-    return apiOk({ query: parsed.data.q, results, snapshot });
+    return apiOk({ query: parsed.data.q, results, snapshot }, limit.headers);
   } catch {
     return apiError("INTERNAL", "Search is temporarily unavailable.");
   }
