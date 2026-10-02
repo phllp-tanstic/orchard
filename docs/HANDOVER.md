@@ -134,11 +134,12 @@ verified it says so instead of guessing.
 
 - **Platforms-vs-tokens count gap (DEC-023, informational only, never gates run status).** In
   the M1 closing run the platforms endpoint reported more tokens than the tokens endpoint
-  returned: ondo 458 reported vs 442 actual (16), bstock 80 reported vs 46 actual (34) - **50
-  in that run**. Separately, DEC-022's read-only investigation found **21** addresses
-  (17 bstock, 4 ondo) present in `/rwa/search` but absent from `/rwa/tokens`, and recorded
-  that this is a lower bound rather than the full population. The gap is provider-side and
-  time-varying; treat either figure as belonging to its run, not as a constant.
+  returned: ondo 458 reported vs 442 actual (**16**), bstock 80 reported vs 46 actual
+  (**34**) - **50 total in that run**. DEC-022's read-only investigation then recovered **at
+  least 21** of those addresses (17 bstock, 4 ondo) via `/rwa/search`, which is a lower
+  bound rather than the full population - leaving **up to 29 unaccounted for**. The gap is
+  provider-side and time-varying; treat each figure as belonging to its run, not as a
+  constant.
 - **3 tokens are excluded for a null `assetType` or `underlyingName`** (DEC-020). They cannot
   be grouped or typed, so they never enter normalization. F002 rejects them explicitly with
   reason code `NULL_IDENTITY` rather than dropping them silently.
