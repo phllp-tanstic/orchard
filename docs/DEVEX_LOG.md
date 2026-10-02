@@ -275,7 +275,12 @@ Suggested fix: implemented (this commit).
 Evidence ref: probe_run_id = 300b6de4-229b-4859-a689-789c5f49e811 (5 provider_call rows, endpoint LIKE '%/rwa/price%')
 ```
 
-### 2026-09-29 (DEC-026 - unresolved: referencePrice means different things on /rwa/tokens and /rwa/price)
+### 2026-09-29 (DEC-026 - referencePrice means different things on /rwa/tokens and /rwa/price)
+
+> **CORRECTED 2026-10-02 (F002 Amendment A1).** The measurements below are correct; one
+> label was not. `P` is the **per-TOKEN** price, not the per-underlying-share price.
+> `/rwa/price` `referencePrice` (`P / R`) is the **per-share** price. The original wording
+> called `P` per-share, which inverted the two. Nothing in the numbers changes.
 
 ```text
 Timestamp: 2026-09-28T22:51:09.210Z (tokens list) / 2026-09-28T22:51:50.340Z and 22:51:52.734Z (price)
@@ -285,28 +290,28 @@ Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest
 Operation: comparison of the stored tokenPrice/referencePrice pair on /rwa/tokens against the pair on /rwa/price, for ondo 0xfc263946439b0d802bf4c5a6fcd34e2885259f91 (KLAC) and ondo 0x5a9d924fc336a5ec8cf3b1909aa660533b50b015 (ENLV)
 Goal: -
 Expected: a field named referencePrice to carry the same quantity on both endpoints
-Observed: it does not. Writing P for the per-underlying-share price and R for tokenToShareRatio, both endpoints satisfy tokenPrice / referencePrice == R internally, but the /rwa/price pair sits one division by R below the /rwa/tokens pair.
+Observed: it does not. Writing P for the per-TOKEN price and R for tokenToShareRatio (CORRECTED 2026-10-02: P was originally mislabelled as the per-underlying-share price; the per-share price is P / R, i.e. /rwa/price referencePrice), both endpoints satisfy tokenPrice / referencePrice == R internally, but the /rwa/price pair sits one division by R below the /rwa/tokens pair.
 
   KLAC, R = 10.026064925604903975
     /rwa/tokens  tokenPrice     = 19031.667350173495423663139671929525   (= R x 1898.219041208259)
-    /rwa/tokens  referencePrice = 1898.219041208259                      (= P)
+    /rwa/tokens  referencePrice = 1898.219041208259                      (= P, per TOKEN)
     /rwa/price   tokenPrice     = 1898.219041208258939443                (= P, re-read 41s later)
-    /rwa/price   referencePrice = 189.328421                             (= P / R)
+    /rwa/price   referencePrice = 189.328421                             (= P / R, per SHARE)
     1898.219041208258939443 / 189.328421 = 10.0260649256 = R
 
   ENLV, R = 0.066667
     /rwa/tokens  tokenPrice     = 0.002318440962013516                   (= R x 0.034776440548)
-    /rwa/tokens  referencePrice = 0.034776440548                         (= P)
+    /rwa/tokens  referencePrice = 0.034776440548                         (= P, per TOKEN)
     /rwa/price   tokenPrice     = 0.034776440548                         (= P, byte-identical here)
-    /rwa/price   referencePrice = 0.521644                               (= P / R)
+    /rwa/price   referencePrice = 0.521644                               (= P / R, per SHARE)
     0.034776440548 / 0.521644 = 0.066667 = R
 
-So /rwa/tokens referencePrice and /rwa/price tokenPrice are the same quantity P, while /rwa/price referencePrice is P / R - a third scaling that no doc page describes. Which of the two endpoints is the intended convention is not determinable from the data; neither doc page states the unit of either field.
+So /rwa/tokens referencePrice and /rwa/price tokenPrice are the same quantity P, while /rwa/price referencePrice is P / R. RESOLVED 2026-10-02 (F002 Amendment A1): P is the per-token price and P / R is the per-underlying-share price, consistent with the Binance tokenized-securities rule that one token represents tokenToShareRatio shares and referencePrice = tokenInfo.price / sharesMultiplier. Confirmed live against quotes: see the F002 normalization re-check entry below. The doc pages still do not state the unit of any of these fields.
 HTTP/provider code: 200 / "0" (all source calls)
 Latency: -
 Workaround: DEC-026 leaves /rwa/price referencePrice unused. tools/probe/src/pipeline.ts compares /rwa/tokens referencePrice (T1) against /rwa/price tokenPrice (T2) instead, which is a same-unit comparison.
 Was docs behavior accurate?: No - the same field name carries two different scalings across the two endpoints, and neither page documents the unit.
-Suggested fix: - (unresolved; not addressed by DEC-026)
+Suggested fix: Document the unit of tokenPrice and referencePrice on both endpoints. (The semantics are resolved as of 2026-10-02; the documentation gap is not.)
 Evidence ref: evidence.provider_call.id = 9709995e-febc-46d2-b7ae-6b0274ea5c56 (tokens list), 2ea05d39-e84c-45a5-9248-6ed032400459 (KLAC price), d45f19b5-2f8f-41dc-826b-424bc6b2143b (ENLV price), probe_run_id = 634f558e-d77d-42eb-aed3-b5e33ca84f1b
 ```
 
@@ -387,7 +392,7 @@ Suggested fix: -
 Evidence ref: - (documentation observation, re-fetched 2026-09-30. Related live evidence: probe_run_id = ef176412-9d7e-45a0-90f7-745518c7ef7f)
 ```
 
-### 2026-09-30 (F002 normalization check, spec section 2)
+### 2026-09-30 (F002 normalization check, spec section 2) - SUPERSEDED, see the 2026-10-02 re-check
 
 ```text
 Timestamp: 2026-09-30T00:00:00.000Z
@@ -412,10 +417,52 @@ Observed: The formula is refuted by live quotes, by exactly the ratio factor. Tw
   Independent economic cross-check, no API needed: PPLT is a platinum ETF trading near USD 155. referencePrice is 155.08416 and tokenPrice is 1550.8416. Under the spec reading, USD 100 would buy 6.449 shares of a USD 155 asset, i.e. about USD 1000 of exposure for USD 100. That is impossible, so one PPLTon cannot represent 10 PPLT shares.
   Conclusion: on /rwa/tokens, referencePrice behaves as the market price of ONE TOKEN and tokenPrice is that value scaled up by tokenToShareRatio. tokenToShareRatio therefore does not mean "shares represented by one token" in the direction F002 section 2 assumes. The correct per-share unit and the true meaning of tokenToShareRatio are NOT determined by this check; only the spec formula is refuted.
   This lands on an already-recorded open risk: DEC-026 logged that the unit of referencePrice is inconsistent between /rwa/tokens and /rwa/price and that neither doc page states the unit of either field.
+  *** SUPERSEDED 2026-10-02 - THIS ENTRY CONCLUDED WRONGLY. *** The formula is CORRECT. The error was the benchmark, not the formula: /rwa/tokens referencePrice is a per-TOKEN price, so comparing a per-share figure against it is wrong by exactly tokenToShareRatio - which is precisely the ~9000 bps (10x) seen below. The per-share benchmark is /rwa/price referencePrice. Re-checked against it, the formula passes: see the next entry. Kept rather than deleted because the log is append-only and the mistake is the point.
 HTTP/provider code: 200 / 0 for every successful quote; 200 / 40367 for ondo ENLVon (non-trading session, skipped as a normal outcome)
 Latency: -
 Workaround: None applied. F002 spec section 7 requires stopping rather than adjusting the formula, so implementation of T1-T5 stopped at this gate and no normalization code was written.
 Was docs behavior accurate?: The RWA data doc page does not state the unit of tokenPrice, referencePrice or tokenToShareRatio, which is what allowed two contradictory readings to look equally defensible. The provider fields are self-consistent; the documentation is silent on their units.
 Suggested fix: Document the unit of tokenPrice, referencePrice and tokenToShareRatio explicitly, and state which one is the executable market price per token.
 Evidence ref: evidence.provider_call.id = 56c5e944-e892-4e3c-b4c3-d6a92d0d6462 (first far-from-1 quote), 85c0c6bd-ae4f-4866-bf04-98924680dcb3 (first 1:1 quote); probe_run_id = bfb33c67-4ce8-491d-8006-780f2ccc0d05 (discriminator) and 09a1ecf8-c7de-44a9-ba5c-d93e3f4b1600 (initial check). Computed rows in reports/f002-normalization-{confirmation,discriminator}.json (git-ignored).
+```
+
+### 2026-10-02 (F002 normalization re-check against the correct per-share benchmark - PASS)
+
+```text
+Timestamp: 2026-10-02T12:57:34.859Z to 2026-10-02T12:57:58.501Z (one 23.6s window)
+Author: Claude (agent)
+Developer: -
+Docs URL/page: docs/specs/F002-spec.md section 2 and Amendment A1; Binance tokenized-securities concept "Token != Share" (one token = sharesMultiplier shares; referencePrice = tokenInfo.price / sharesMultiplier); https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/rwa-data
+Operation: GET /api/v1/dex/market/rwa/tokens (both platforms), then ONE batched GET /api/v1/dex/market/rwa/price for all 21 selected addresses, then GET /api/v1/dex/aggregator/quote (chain 56, fromTokenAddress USDT, amount 100 USDT, userWalletAddress burn) per selected token. Read-only; nothing signed, no /swap, no wallet.
+Goal: Re-run the F002 section 2 confirmation using /rwa/price referencePrice as the per-share benchmark, after the 2026-09-30 attempt used /rwa/tokens referencePrice and wrongly concluded the formula was refuted.
+Expected: impliedPricePerShare = 100 / ((toTokenAmount / 10^decimals) * tokenToShareRatio) should land on /rwa/price referencePrice. Owner criterion: the ratio >= 2 group within +/-300 bps.
+Observed: PASS. Population at the time of the window: 488 returned, 485 usable, of which 9 with tokenToShareRatio >= 2 and 2 with ratio <= 0.5 (11 far from 1), 228 at ratio exactly 1, and 122 in [1.005, 1.03]. Selected all 11 far-from-1 tokens plus 5 at ratio 1 and 5 near 1 (21 total); /rwa/price returned all 21; 19 produced a quote.
+  ratio >= 2 group, deviation of impliedPricePerShare from /rwa/price referencePrice:
+    ondo NFLXon  ratio 10                       implied 68.1199666212   bench 68.081481    +5.7 bps
+    ondo PPLTon  ratio 10                       implied 15.7309885944   bench 15.709643   +13.6 bps
+    ondo NOWon   ratio 5                        implied 139.2716715390  bench 139         +19.5 bps
+    ondo APHon   ratio 2.004270673342698199     implied 87.5274468687   bench 87.34       +21.5 bps
+    ondo PALLon  ratio 5                        implied 21.6315842841   bench 21.578929   +24.4 bps
+    ondo KLACon  ratio 10.026064925604903975    implied 207.0826406100  bench 206.520833  +27.2 bps
+    ondo CVNAon  ratio 5                        implied 64.9994485140   bench 64.74       +40.1 bps
+    ondo CRWDon  ratio 4                        implied 269.0267493600  bench 267.9325    +40.8 bps
+    ondo IWFon   ratio 4.012874287579009489     implied 127.5126786000  bench 126.860167  +51.4 bps
+    => 9 of 9 evaluated, worst absolute deviation 51.4 bps, ZERO outside +/-300 bps.
+  other groups, for contrast:
+    ratio <= 0.5:        ondo SOXSon ratio 0.101695663086635307, +7.7 bps (1 evaluated)
+    ratio == 1:          5 evaluated, worst +32.5 bps (bstock INTWB)
+    ratio 1.005-1.03:    4 evaluated, worst +22.3 bps (ondo OXYon); ondo BILon was -1.5 bps
+    Worst across all 19 evaluated tokens: 51.4 bps.
+  Every deviation is positive except BILon, which is consistent with paying spread plus fees above the reference.
+  Exceptions, listed not hidden - both documented normal outcomes, neither a formula failure:
+    ondo ENLVon  ratio 0.066667                 no quote, provider code 40367 (non-trading session)
+    ondo ORCLon  ratio 1.0079328914586566       no quote, provider code 40374 (insufficient liquidity)
+  Why the 2026-09-30 attempt failed: it benchmarked against /rwa/tokens referencePrice, which is per-TOKEN. A per-share figure compared to a per-token benchmark is wrong by exactly tokenToShareRatio, which is why the three ratio-10 tokens showed about -9000 bps, i.e. a clean factor of 10, rather than noise. The "H2" column in that entry (deviation of price-per-token from the per-token field) is algebraically identical to this entry's deviation of price-per-share from the per-share field, and it already read +56.9, -2.0 and +4.6 bps.
+  Not established by this check: that one provider share equals one exchange-listed share. For PPLTon the per-share benchmark is 15.709643 while the real-world PPLT ETF trades near 155, a factor of about 10. F002 compares representations of the same underlying, so this does not affect it, but it does mean cross-platform comparability needs its own evidence - T5 reports the bStock-vs-Ondo per-share benchmark agreement in bps instead of assuming it.
+HTTP/provider code: 200 / 0 for the tokens pass, the price batch and all 19 successful quotes; 200 / 40367 and 200 / 40374 for the two skips
+Latency: whole window 23.6s for 2 tokens calls + 1 price batch + 21 quote attempts
+Workaround: -
+Was docs behavior accurate?: The provider fields are self-consistent and the tokenized-securities concept documents the relationship. The REST doc pages still do not state the unit of tokenPrice or referencePrice on either endpoint, which is what allowed the wrong benchmark to look defensible.
+Suggested fix: State the unit of tokenPrice and referencePrice on both /rwa/tokens and /rwa/price, and say explicitly which field is per share.
+Evidence ref: probe_run_id = b44704bc-7870-474b-9c66-4688b6cbb9c1 (terminal event COMPLETE); computed rows in reports/f002-normalization-recheck.json (git-ignored). Superseded attempt: probe_run_id = bfb33c67-4ce8-491d-8006-780f2ccc0d05 and 09a1ecf8-c7de-44a9-ba5c-d93e3f4b1600.
 ```
