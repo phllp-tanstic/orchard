@@ -14,3 +14,12 @@ export {
 } from "./recorder.js";
 export { ProbeRunAlreadyTerminalError, isTerminalEventConflict } from "./errors.js";
 export { exportEvidence, type ExportResult, type ProviderCallRow } from "./export.js";
+export {
+  createSnapshotSink,
+  insertPlatformSnapshots,
+  insertTokenSnapshots,
+  type PlatformSnapshotRow,
+  type SnapshotSink,
+  type SnapshotWriteCounts,
+  type TokenSnapshotRow,
+} from "./rwa-snapshot.js";

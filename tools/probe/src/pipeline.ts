@@ -41,7 +41,53 @@ export interface RequestSpec {
 }
 
 export interface RequestClient {
-  request<T>(spec: RequestSpec): Promise<{ data: T }>;
+  /**
+   * `providerCallId` is optional so BinanceWeb3Client satisfies this
+   * interface unchanged. A caller that records evidence (see
+   * `pnpm universe:refresh`) wraps the client to return the
+   * evidence.provider_call id alongside the data, which is what lets the
+   * snapshot rows below reference the exact response they came from.
+   */
+  request<T>(spec: RequestSpec): Promise<{ data: T; providerCallId?: string | undefined }>;
+}
+
+/**
+ * Optional sink for the rwa.* snapshot tables (F003 T3). When present, the
+ * pipeline hands it the ALREADY PARSED rows as it goes, so the snapshot is
+ * written from the same data the probe produced rather than from a second
+ * pass over the provider.
+ *
+ * /rwa/price results are deliberately NOT persisted: there is no price
+ * snapshot table and F003 T3 permits a migration only for a read-only view or
+ * index, not a new data table. Those calls still happen and are still captured
+ * as evidence.provider_call rows.
+ */
+export interface SnapshotSink {
+  platforms(args: {
+    providerCallId: string;
+    rows: readonly {
+      platformId: string;
+      platformName?: string | null | undefined;
+      raw: unknown;
+    }[];
+  }): Promise<void>;
+  tokens(args: {
+    providerCallId: string;
+    rows: readonly {
+      platformId: string;
+      tokenContractAddress: string;
+      binanceChainId: string;
+      underlyingTicker?: string | null | undefined;
+      underlyingName?: string | null | undefined;
+      assetType?: number | null | undefined;
+      marketStatus?: string | null | undefined;
+      tokenToShareRatio: string;
+      tokenPrice?: string | null | undefined;
+      referencePrice?: string | null | undefined;
+      tokenPriceUpdatedAt?: Date | null | undefined;
+      raw: unknown;
+    }[];
+  }): Promise<void>;
 }
 
 export type TerminalStatus = "COMPLETE" | "INCOMPLETE" | "FAILED";
@@ -73,6 +119,12 @@ export interface RunProbeDeps {
   now?: () => Date;
   /** /rwa/price batch size (tokenContractAddresses count). Defaults to DEFAULT_PRICE_BATCH_SIZE; never exceeds PRICE_BATCH_MAX. */
   priceBatchSize?: number;
+  /**
+   * When set, parsed platforms and tokens are persisted to rwa.* as the
+   * pipeline reads them (F003 T3). Absent for `pnpm probe:rwa`, which only
+   * reports; set by `pnpm universe:refresh`, which also snapshots.
+   */
+  snapshot?: SnapshotSink;
 }
 
 export interface RunProbeResult {
@@ -106,15 +158,24 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
 
   let platforms: Platform[];
   try {
-    const raw = (
-      await deps.client.request<unknown>({
-        method: "GET",
-        path: "/api/v1/dex/market/rwa/platforms",
-      })
-    ).data;
+    const response = await deps.client.request<unknown>({
+      method: "GET",
+      path: "/api/v1/dex/market/rwa/platforms",
+    });
+    const raw = response.data;
     platforms = platformsDataSchema.parse(raw);
     const extra = unknownArrayItemKeys(platformSchema.shape, raw as Record<string, unknown>[]);
     if (extra.length) unknownFields["platforms"] = extra;
+    if (deps.snapshot !== undefined && response.providerCallId !== undefined) {
+      await deps.snapshot.platforms({
+        providerCallId: response.providerCallId,
+        rows: platforms.map((platform) => ({
+          platformId: platform.platformId,
+          platformName: (platform as unknown as { platformName?: string }).platformName ?? null,
+          raw: platform,
+        })),
+      });
+    }
   } catch (err) {
     const reason = `failed to fetch/validate platforms: ${describeError(err)}`;
     const failedReport = emptyReport(probeRunId, deps.gitSha, now(), "FAILED", [reason]);
@@ -134,16 +195,38 @@ export async function runRwaUniverseProbe(deps: RunProbeDeps): Promise<RunProbeR
 
   for (const platform of platforms) {
     try {
-      const raw = (
-        await deps.client.request<unknown>({
-          method: "GET",
-          path: "/api/v1/dex/market/rwa/tokens",
-          query: { binanceChainId: deps.targetChainId, platformId: platform.platformId },
-        })
-      ).data;
+      const response = await deps.client.request<unknown>({
+        method: "GET",
+        path: "/api/v1/dex/market/rwa/tokens",
+        query: { binanceChainId: deps.targetChainId, platformId: platform.platformId },
+      });
+      const raw = response.data;
       const tokens = tokensDataSchema.parse(raw);
       const extra = unknownArrayItemKeys(tokenSchema.shape, raw as Record<string, unknown>[]);
       if (extra.length) unknownFields[`tokens:${platform.platformId}`] = extra;
+      if (deps.snapshot !== undefined && response.providerCallId !== undefined) {
+        // EVERY token is snapshotted, including the ones partitioned out below
+        // for a null assetType or underlyingName (DEC-020). The snapshot is a
+        // record of what the provider returned; filtering belongs to the
+        // engine, not to the stored evidence.
+        await deps.snapshot.tokens({
+          providerCallId: response.providerCallId,
+          rows: tokens.map((token) => ({
+            platformId: token.platformId,
+            tokenContractAddress: token.tokenContractAddress,
+            binanceChainId: token.binanceChainId,
+            underlyingTicker: token.underlyingTicker,
+            underlyingName: token.underlyingName,
+            assetType: token.assetType,
+            marketStatus: token.statusInfo.marketStatus,
+            tokenToShareRatio: token.tokenToShareRatio,
+            tokenPrice: token.tokenPrice,
+            referencePrice: token.referencePrice,
+            tokenPriceUpdatedAt: null,
+            raw: token,
+          })),
+        });
+      }
 
       const { complete, incomplete } = partitionCompleteTokens(tokens);
       incompleteTokenRecords.push(...incomplete);
