@@ -466,3 +466,31 @@ Was docs behavior accurate?: The provider fields are self-consistent and the tok
 Suggested fix: State the unit of tokenPrice and referencePrice on both /rwa/tokens and /rwa/price, and say explicitly which field is per share.
 Evidence ref: probe_run_id = b44704bc-7870-474b-9c66-4688b6cbb9c1 (terminal event COMPLETE); computed rows in reports/f002-normalization-recheck.json (git-ignored). Superseded attempt: probe_run_id = bfb33c67-4ce8-491d-8006-780f2ccc0d05 and 09a1ecf8-c7de-44a9-ba5c-d93e3f4b1600.
 ```
+
+### 2026-10-02 (F002 T5 - priceImpactPercent is a fraction, not a percentage)
+
+```text
+Timestamp: 2026-10-02T13:50:00.000Z
+Author: Claude (agent)
+Developer: -
+Docs URL/page: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api (Get Aggregated Quote, priceImpactPercent)
+Operation: GET /api/v1/dex/aggregator/quote (chain 56, fromTokenAddress USDT, amount 100 USDT, userWalletAddress burn) for both representations of each of the 40 multi-representation tickers. Read-only, nothing signed.
+Goal: Rank the two representations of each ticker by normalized shares and reject anything outside the eligibility policy.
+Expected: priceImpactPercent to be a percentage, as the field name says, so a 300 bps ceiling would be compared against value x 100.
+Observed: The field is a FRACTION in [0,1]. Four live routes returned catastrophically less than their sibling for the same 100 USDT, and the provider value tracked the true loss fraction, not a percentage:
+    ondo AVGOon    provider 0.9990013351   true loss fraction 0.999997   (824330485648 vs bstock 285226508371740516, both 18 decimals)
+    ondo MSFTon    provider 0.9996010028   true loss fraction 1.000000   (63212547187 vs bstock 192563437766822581)
+    bstock NBISB   provider 0.9609756649   true loss fraction 0.811442   (paid 1281.36/share against a 241.61 benchmark)
+    ondo SNDKon    provider 0.9319177781   true loss fraction 0.890726   (paid 16005.95/share against a 1749.04 benchmark)
+  The true loss fraction is computed independently as 1 - (per-share benchmark / effective price per share), where the benchmark is /rwa/price referencePrice. Read as a percentage, 0.999 would describe a 0.999% impact on a route that returned 0.0000008 shares instead of 0.286 - a 99.9997% loss, understating it by about 100,000x. Read as a fraction it is accurate to three decimal places on the two extreme cases.
+  The healthy routes in the same run reported 0, -0.0000000000 or 0.01069987, which is consistent with either reading, so only the extreme cases settle the scale. They settle it unambiguously. The sibling field taxRate is documented by the provider as "0-1", which is the same convention.
+  Effect of getting it wrong, measured: with x 100 (the percent reading) all four mispriced routes passed a 300 bps ceiling and were ranked as ELIGIBLE. The normalized-shares spread between platforms then ran to 30329056123.9 bps and the four routes sat up to 30344498099 bps away from their own per-share benchmark. With x 10000 they convert to 9990, 9996, 9610 and 9319 bps and are rejected as PRICE_IMPACT_EXCEEDS_MAX.
+  After the correction, over the same 40 tickers: 5 PRICE_IMPACT_EXCEEDS_MAX rejections, worst remaining platform spread 88 bps (median 5.4), and every ELIGIBLE candidate within 91.3 bps of its per-share benchmark (median 18.1). Winners were unchanged at bstock 27 and ondo 13, because the ranking already preferred the sane side on shares; the correction removed the bad candidates from consideration rather than changing any outcome. Tickers with fewer than 2 eligible candidates rose from 12 to 17, which is the honest consequence.
+  Residual risk, NOT fixed and worth an owner decision: the policy has no ceiling on referenceDeviationBps. A route that is wildly mispriced but reports a small or zero priceImpactPercent would still be ELIGIBLE, and for a ticker where it is the only eligible candidate it would be selected. The blueprint (Stage B step 7) treats reference deviation as transparency rather than an execution gate, and F002 T2 does not list a reason code for it, so none was added.
+HTTP/provider code: 200 / 0 for all 68 successful quotes; 12 quote attempts returned no route
+Latency: -
+Workaround: priceImpactPercentToBps multiplies by 10000, with the evidence recorded in the function comment so the scale cannot be silently reverted.
+Was docs behavior accurate?: No. The field is named priceImpactPercent and the page calls it a "price impact percentage", but the value behaves as a fraction. The doc page does not state the scale, and for ordinary small values the two readings are indistinguishable, which is how a 100x error can survive unnoticed.
+Suggested fix: State the scale of priceImpactPercent explicitly, or rename it. A caller enforcing a slippage or impact ceiling on the documented reading is out by 100x in the permissive direction, which is the dangerous direction.
+Evidence ref: probe_run_id = 18ba4538-7c58-4940-8e45-1eae44a7646b (the run that exposed it, pre-fix) and eace2297-c3a1-44d7-bf60-14a279f3ebef (post-fix, same 40 tickers). Per-candidate provider_call ids: evidence.provider_call.id = c6ace4fa-17ec-43fe-baf4-17117145f9e0 (AVGOon), 7eac6a64-e9c0-4c7a-8288-785842035a77 (MSFTon), 62b258fc-a438-4e83-a50c-facb342e8061 (AVGOB, the healthy sibling), 900f3a4b-3e79-4061-bbf4-9d7707487969 (MSFTB).
+```

@@ -112,7 +112,30 @@ export function deviationBps(a: Decimal, b: Decimal): Decimal | undefined {
 }
 
 /**
- * Provider priceImpactPercent (a percent, e.g. "0.04") to basis points.
+ * Provider priceImpactPercent to basis points.
+ *
+ * Despite the field name, the value is a FRACTION in [0,1], not a percentage.
+ * Established from live evidence (probe_run
+ * 18ba4538-7c58-4940-8e45-1eae44a7646b) by comparing the provider value
+ * against the loss computed independently from the per-share benchmark:
+ *
+ *   ondo AVGOon    provider 0.9990013351   true loss fraction 0.999997
+ *   ondo MSFTon    provider 0.9996010028   true loss fraction 1.000000
+ *   bstock NBISB   provider 0.9609756649   true loss fraction 0.811442
+ *   ondo SNDKon    provider 0.9319177781   true loss fraction 0.890726
+ *
+ * Read as a percentage, 0.999 would mean a 0.999% impact on a route that in
+ * fact returned 0.0000008 shares instead of 0.286 - a 99.9997% loss, so a
+ * 100,000x understatement. Read as a fraction it is accurate. The healthy
+ * routes in the same run reported 0 or 0.0107, which is consistent with either
+ * reading, so only the extreme cases settle the scale - and they settle it
+ * unambiguously. It also matches the sibling field taxRate, which the provider
+ * documents as "0-1".
+ *
+ * So multiplying by 10000 converts a fraction to bps. Using 100 (the percent
+ * reading) let four catastrophically mispriced live routes pass a 300 bps
+ * policy ceiling; with the correct scale they are rejected.
+ *
  * Accepts a leading minus, which the provider does emit. undefined when the
  * value is absent or not numeric - reported as unknown, never as zero.
  */
@@ -120,7 +143,7 @@ export function priceImpactPercentToBps(value: string | null | undefined): Decim
   if (value === null || value === undefined || value.trim() === "") return undefined;
   const signed = /^-?(0|[1-9]\d*)(\.\d+)?$/;
   if (!signed.test(value)) return undefined;
-  return new Decimal(value).times(100);
+  return new Decimal(value).times(10000);
 }
 
 /**

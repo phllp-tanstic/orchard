@@ -21,7 +21,8 @@
     "migrate:down": "tsx db/migrate.ts down",
     "evidence:export": "tsx packages/evidence/src/export-cli.ts",
     "probe:rwa": "tsx tools/probe/src/cli.ts",
-    "probe:quote": "tsx tools/probe-quote/src/cli.ts"
+    "probe:quote": "tsx tools/probe-quote/src/cli.ts",
+    "route:probe": "tsx tools/route-probe/src/cli.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

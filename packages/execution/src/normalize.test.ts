@@ -168,10 +168,26 @@ describe("deviationBps", () => {
 });
 
 describe("priceImpactPercentToBps", () => {
-  it("converts percent to bps", () => {
-    expect(priceImpactPercentToBps("0.04")?.toFixed()).toBe("4");
-    expect(priceImpactPercentToBps("1")?.toFixed()).toBe("100");
-    expect(priceImpactPercentToBps("-0.5")?.toFixed()).toBe("-50");
+  it("treats the value as a FRACTION, not a percentage (live evidence)", () => {
+    // 1.0 is a total loss, so 10000 bps. Reading it as a percent would give
+    // 100 bps and let a route that eats the entire input pass a 300 bps cap.
+    expect(priceImpactPercentToBps("1")?.toFixed()).toBe("10000");
+    expect(priceImpactPercentToBps("0.5")?.toFixed()).toBe("5000");
+    expect(priceImpactPercentToBps("0.04")?.toFixed()).toBe("400");
+    expect(priceImpactPercentToBps("-0.5")?.toFixed()).toBe("-5000");
+  });
+
+  it("converts the four live anomalies to bps above any sane ceiling", () => {
+    // probe_run 18ba4538-7c58-4940-8e45-1eae44a7646b.
+    expect(priceImpactPercentToBps("0.9990013351")?.toFixed(1)).toBe("9990.0");
+    expect(priceImpactPercentToBps("0.9996010028")?.toFixed(1)).toBe("9996.0");
+    expect(priceImpactPercentToBps("0.9609756649")?.toFixed(1)).toBe("9609.8");
+    expect(priceImpactPercentToBps("0.9319177781")?.toFixed(1)).toBe("9319.2");
+  });
+
+  it("keeps a healthy live route comfortably inside the default ceiling", () => {
+    // ondo NVDAon reported 0.01069987 -> 107 bps, under the 300 bps default.
+    expect(priceImpactPercentToBps("0.01069987")?.toFixed(1)).toBe("107.0");
   });
 
   it("returns undefined for absent or non-numeric values rather than zero", () => {
