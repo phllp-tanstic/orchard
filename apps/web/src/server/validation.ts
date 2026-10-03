@@ -94,6 +94,10 @@ export type PreviewBody = z.infer<typeof previewBodySchema>;
 export const API_ERROR_CODES = [
   "INVALID_INPUT",
   "NOT_FOUND",
+  // Only /api/diag uses this. No public endpoint authenticates anybody: the
+  // app is anonymous by design (F003), and diag is an operator tool gated on
+  // WEB_DIAG_TOKEN rather than a user-facing feature.
+  "UNAUTHORIZED",
   "RATE_LIMITED",
   "BUSY",
   "PROVIDER_UNAVAILABLE",
@@ -110,6 +114,7 @@ export interface ApiErrorBody {
 export const HTTP_STATUS_FOR_ERROR: Readonly<Record<ApiErrorCode, number>> = {
   INVALID_INPUT: 400,
   NOT_FOUND: 404,
+  UNAUTHORIZED: 401,
   RATE_LIMITED: 429,
   BUSY: 503,
   PROVIDER_UNAVAILABLE: 502,

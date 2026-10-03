@@ -28,6 +28,15 @@ regexes = [
   '''^BINANCE_WEB3_[A-Z_]+=$''',
   '''^DATABASE_URL=$''',
   '''^SYNTHETIC_TEST_SECRET_0123456789$''',
+  # The two provider variable NAMES, standing alone. render.yaml declares each
+  # secret as `- key: BINANCE_WEB3_API_SECRET` with `sync: false` and NO value,
+  # which is the whole point - Render reads nothing from the file and the owner
+  # types the value into the dashboard. The generic rule sees a YAML `key:`
+  # followed by a long token and flags the name. Allowlisted by exact value, so
+  # this can only ever match the literal name: any real credential differs from
+  # it and is still caught.
+  '''^BINANCE_WEB3_API_KEY$''',
+  '''^BINANCE_WEB3_API_SECRET$''',
   # USDT on BSC, the F001-B probe spend token. A public contract address
   # anyone can read on-chain, not a credential - and never a substitute for
   # one: it grants nothing. Allowlisted by exact value only.

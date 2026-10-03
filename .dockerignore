@@ -1,0 +1,61 @@
+# Build context exclusions.
+#
+# This file is a SECURITY control as much as a speed one. Anything listed here
+# cannot reach a build layer, so it cannot reach `docker history`, a leaked
+# image, or a public registry. The repository is public (AGENTS.md), but the
+# untracked files beside it are not.
+
+# --- secrets. Never in the context, never in a layer. Real values arrive at
+# runtime from the host's secret store only. `.env.example` holds names with
+# empty values and is still excluded: the image has no use for it.
+.env
+.env.*
+*.pem
+*.key
+
+# --- local provider evidence and generated reports. `evidence/raw/` and
+# `reports/` are git-ignored, so they exist only on the owner's machine and
+# would otherwise be silently baked into the image.
+evidence/
+reports/
+
+# --- one-off investigation scripts, never committed and never shipped.
+scripts/scratch/
+
+# --- git history. A full .git in the context is both large and a disclosure
+# risk (it carries every branch and every past state).
+.git/
+.gitattributes
+
+# --- anything the build regenerates. Copying a host-built node_modules or
+# .next into the context is how a Windows-built, non-standalone bundle ends up
+# in a Linux image.
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+dist/
+**/dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# --- test and tooling artefacts with no role in a production image.
+playwright-report/
+**/playwright-report/
+test-results/
+**/test-results/
+*.log
+
+# --- developer and CI files the image does not need.
+.github/
+.husky/
+.vscode/
+.idea/
+.claude/
+docker-compose.yml
+Dockerfile
+Dockerfile.jobs
+.dockerignore
+.DS_Store
