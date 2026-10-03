@@ -1,5 +1,17 @@
 packages:
+  - "apps/*"
   - "packages/*"
   - "tools/*"
 allowBuilds:
   esbuild: true
+  sharp: false
+
+# Patched versions of two transitive dependencies of next@15.5.27, which still
+# resolves vulnerable ranges. `pnpm audit --audit-level=high` is a CI gate, so
+# these are raised rather than suppressed. Neither is used by this app at
+# runtime: next/image optimization (sharp) is unused because avatars are
+# rendered as initials and no third-party images are loaded, and there is no
+# PostCSS config. They are pinned forward purely so the audit is clean.
+overrides:
+  sharp: ">=0.35.4"
+  postcss: ">=8.5.18"

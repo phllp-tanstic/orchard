@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -39,7 +39,9 @@ function listFiles(dir: string): string[] {
     if (IGNORE.test(entry)) continue;
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) out = out.concat(listFiles(full));
-    else if (/\.ts$/.test(full)) out.push(full);
+    // .tsx too, or the entire UI layer - the part a browser actually runs -
+    // would be outside the scan.
+    else if (/\.tsx?$/.test(full)) out.push(full);
   }
   return out;
 }
@@ -47,7 +49,31 @@ function listFiles(dir: string): string[] {
 const FEATURE_DIRS = [
   join(REPO_ROOT, "packages", "execution"),
   join(REPO_ROOT, "tools", "route-probe"),
+  // F003 extends this guard to the web app: the browser-facing surface is
+  // exactly where a signing path would be most damaging and least noticed.
+  join(REPO_ROOT, "apps", "web"),
 ];
+
+/**
+ * The client-bundle scanner is exempt from the forbidden-string scan, by file
+ * name, with a reason: it ENUMERATES these strings in order to assert they are
+ * absent from the built bundle. Scanning it would make this guard flag the
+ * very code that enforces the same rule.
+ *
+ * Three files, and no more: the scanner, the CLI that runs it after a build,
+ * and its tests (which plant each primitive as a negative control). The
+ * allowlist is the one way this guard can be weakened, so its contents are
+ * themselves asserted below - a fourth entry has to be argued for in a diff,
+ * not slipped in.
+ */
+const ALLOWLISTED_FILES = new Set(["bundle-scan.ts", "bundle-scan-cli.ts", "bundle-scan.test.ts"]);
+
+// node's own basename, not a hand-rolled split: a regex that forgets the
+// Windows separator silently matches nothing and the allowlist quietly fails
+// open, which is exactly what happened the first time this was written.
+function fileName(path: string): string {
+  return basename(path);
+}
 
 const FORBIDDEN: [RegExp, string][] = [
   [/aggregator\/swap/, "GET /swap"],
@@ -61,16 +87,54 @@ const FORBIDDEN: [RegExp, string][] = [
   ],
 ];
 
-describe("F002: the execution feature cannot sign, swap, submit or broadcast", () => {
-  const files = FEATURE_DIRS.flatMap(listFiles);
+describe("F002/F003: the execution feature and the web app cannot sign, swap, submit or broadcast", () => {
+  const allFiles = FEATURE_DIRS.flatMap(listFiles);
+  const files = allFiles.filter((f) => !ALLOWLISTED_FILES.has(fileName(f)));
 
   it("scans a non-empty set of files (guards against a vacuous pass)", () => {
-    expect(files.length).toBeGreaterThan(5);
+    expect(files.length).toBeGreaterThan(20);
+  });
+
+  it("covers the web app, not only the engine", () => {
+    expect(files.some((f) => f.includes(join("apps", "web")))).toBe(true);
+  });
+
+  it("exempts ONLY the client-bundle scanner, and every exempt file exists", () => {
+    // The allowlist is this guard's single weak point. Pinning its contents
+    // means growing it is a visible decision; checking the files exist means a
+    // rename cannot leave a dead entry quietly broadening nothing.
+    expect([...ALLOWLISTED_FILES].sort()).toEqual([
+      "bundle-scan-cli.ts",
+      "bundle-scan.test.ts",
+      "bundle-scan.ts",
+    ]);
+    for (const name of ALLOWLISTED_FILES) {
+      expect(
+        allFiles.some((f) => fileName(f) === name),
+        `allowlisted file ${name} no longer exists - remove the entry`,
+      ).toBe(true);
+    }
   });
 
   it.each(FORBIDDEN)("never references %s (%s)", (pattern, label) => {
     const offenders = files.filter((f) => pattern.test(stripComments(readFileSync(f, "utf8"))));
-    expect(offenders, `${label} must not appear in the F002 feature`).toEqual([]);
+    expect(offenders, `${label} must not appear in the F002/F003 feature`).toEqual([]);
+  });
+
+  it("the web app declares no wallet or web3 dependency", () => {
+    // A signing path usually arrives as a dependency long before it arrives as
+    // a call, so the manifest is the cheaper place to catch it.
+    const manifest = JSON.parse(
+      readFileSync(join(REPO_ROOT, "apps", "web", "package.json"), "utf8"),
+    ) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    const names = [
+      ...Object.keys(manifest.dependencies ?? {}),
+      ...Object.keys(manifest.devDependencies ?? {}),
+    ];
+    const wallety = names.filter((n) =>
+      /ethers|web3|viem|wagmi|walletconnect|@solana|bip39|hdkey|keccak|secp256k1/i.test(n),
+    );
+    expect(wallety).toEqual([]);
   });
 
   it("only ever calls the read-only endpoints it needs", () => {
@@ -80,11 +144,13 @@ describe("F002: the execution feature cannot sign, swap, submit or broadcast", (
         endpoints.add(m[0]);
       }
     }
-    // Exactly the three read-only endpoints F002 needs: the token universe,
-    // the per-share benchmark, and the quote. Anything else - a swap, an order
-    // submission, a broadcast - would show up here.
+    // Exactly the read-only endpoints these features need: the token universe,
+    // the per-share benchmark, the quote, and (F003 health/capabilities) the
+    // platforms list. Anything else - a swap, an order submission, a broadcast
+    // - would show up here.
     expect([...endpoints].sort()).toEqual([
       "/api/v1/dex/aggregator/quote",
+      "/api/v1/dex/market/rwa/platforms",
       "/api/v1/dex/market/rwa/price",
       "/api/v1/dex/market/rwa/tokens",
     ]);

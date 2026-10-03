@@ -94,94 +94,135 @@ afterEach(() => {
   if (workDir) rmSync(workDir, { recursive: true, force: true });
 });
 
-describe("gitleaks regression (DEC-013 A2: exact-value allowlist, no path allowlist)", () => {
-  it("flags a fake secret committed under src/", () => {
-    workDir = mkdtempSync(join(tmpdir(), "gitleaks-src-"));
-    mkdirSync(join(workDir, "src"), { recursive: true });
-    writeFileSync(
-      join(workDir, "src", "config.ts"),
-      `export const BINANCE_WEB3_API_SECRET = "${FAKE_SECRET}";\n`,
-    );
+/**
+ * Each case spawns the real gitleaks binary, and the repository-history scan
+ * walks every commit. The default 5s budget is a timing assumption, not an
+ * assertion about the config - an explicit timeout makes a genuine failure
+ * readable instead of arriving as "timed out".
+ */
+describe(
+  "gitleaks regression (DEC-013 A2: exact-value allowlist, no path allowlist)",
+  { timeout: 120_000 },
+  () => {
+    it("flags a fake secret committed under src/", () => {
+      workDir = mkdtempSync(join(tmpdir(), "gitleaks-src-"));
+      mkdirSync(join(workDir, "src"), { recursive: true });
+      writeFileSync(
+        join(workDir, "src", "config.ts"),
+        `export const BINANCE_WEB3_API_SECRET = "${FAKE_SECRET}";\n`,
+      );
 
-    const result = scanDir(workDir);
-    expect(result.leaksFound).toBe(true);
-    expect(result.ruleIds).toContain("binance-web3-api-secret");
-  });
+      const result = scanDir(workDir);
+      expect(result.leaksFound).toBe(true);
+      expect(result.ruleIds).toContain("binance-web3-api-secret");
+    });
 
-  it("flags the same fake secret even inside a SYNTHETIC_-prefixed fixture (no path allowlist)", () => {
-    workDir = mkdtempSync(join(tmpdir(), "gitleaks-fixture-"));
-    mkdirSync(join(workDir, "test", "fixtures"), { recursive: true });
-    writeFileSync(
-      join(workDir, "test", "fixtures", "SYNTHETIC_leaked.json"),
-      JSON.stringify({ note: `BINANCE_WEB3_API_SECRET=${FAKE_SECRET}` }),
-    );
+    it("flags the same fake secret even inside a SYNTHETIC_-prefixed fixture (no path allowlist)", () => {
+      workDir = mkdtempSync(join(tmpdir(), "gitleaks-fixture-"));
+      mkdirSync(join(workDir, "test", "fixtures"), { recursive: true });
+      writeFileSync(
+        join(workDir, "test", "fixtures", "SYNTHETIC_leaked.json"),
+        JSON.stringify({ note: `BINANCE_WEB3_API_SECRET=${FAKE_SECRET}` }),
+      );
 
-    const result = scanDir(workDir);
-    expect(result.leaksFound).toBe(true);
-    expect(result.ruleIds).toContain("binance-web3-api-secret");
-  });
+      const result = scanDir(workDir);
+      expect(result.leaksFound).toBe(true);
+      expect(result.ruleIds).toContain("binance-web3-api-secret");
+    });
 
-  it("does not flag the one allowlisted literal fixture value (SYNTHETIC_TEST_SECRET_0123456789)", () => {
-    workDir = mkdtempSync(join(tmpdir(), "gitleaks-allowlisted-"));
-    mkdirSync(join(workDir, "test", "fixtures"), { recursive: true });
-    writeFileSync(
-      join(workDir, "test", "fixtures", "SYNTHETIC_signer_vectors.json"),
-      JSON.stringify({ secret: "SYNTHETIC_TEST_SECRET_0123456789" }),
-    );
+    it("does not flag the one allowlisted literal fixture value (SYNTHETIC_TEST_SECRET_0123456789)", () => {
+      workDir = mkdtempSync(join(tmpdir(), "gitleaks-allowlisted-"));
+      mkdirSync(join(workDir, "test", "fixtures"), { recursive: true });
+      writeFileSync(
+        join(workDir, "test", "fixtures", "SYNTHETIC_signer_vectors.json"),
+        JSON.stringify({ secret: "SYNTHETIC_TEST_SECRET_0123456789" }),
+      );
 
-    const result = scanDir(workDir);
-    expect(result.leaksFound).toBe(false);
-  });
+      const result = scanDir(workDir);
+      expect(result.leaksFound).toBe(false);
+    });
 
-  it("allowlists the public USDT-on-BSC contract address by exact value only", () => {
-    workDir = mkdtempSync(join(tmpdir(), "gitleaks-usdt-"));
-    mkdirSync(join(workDir, "src"), { recursive: true });
-    writeFileSync(
-      join(workDir, "src", "spend.ts"),
-      `const DEFAULT_SPEND_TOKEN_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";\n`,
-    );
+    it("allowlists the public USDT-on-BSC contract address by exact value only", () => {
+      workDir = mkdtempSync(join(tmpdir(), "gitleaks-usdt-"));
+      mkdirSync(join(workDir, "src"), { recursive: true });
+      writeFileSync(
+        join(workDir, "src", "spend.ts"),
+        `const DEFAULT_SPEND_TOKEN_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";\n`,
+      );
 
-    expect(scanDir(workDir).leaksFound).toBe(false);
-  });
+      expect(scanDir(workDir).leaksFound).toBe(false);
+    });
 
-  it("does not extend that exemption to any other address-shaped value", () => {
-    // The entry is anchored to one exact address. A different 0x value in the
-    // same position must still be scanned, so the exemption can never widen
-    // into "any hex blob next to a token-ish identifier".
-    workDir = mkdtempSync(join(tmpdir(), "gitleaks-otheraddr-"));
-    mkdirSync(join(workDir, "src"), { recursive: true });
-    // Built from parts (never a contiguous literal in this source file) so
-    // this test file does not itself trip the rule it is testing - same
-    // reason as the DATABASE_URL case below.
-    const otherAddress = ["0xAbCd1234567890fEdCbA", "0987654321aAbBcCdDeE"].join("");
-    writeFileSync(
-      join(workDir, "src", "spend.ts"),
-      `const DEFAULT_SPEND_TOKEN_ADDRESS = "${otherAddress}";\n`,
-    );
-
-    expect(scanDir(workDir).leaksFound).toBe(true);
-  });
-
-  it("flags a fake DATABASE_URL with an embedded password", () => {
-    workDir = mkdtempSync(join(tmpdir(), "gitleaks-dburl-"));
-    writeFileSync(
-      join(workDir, ".env.leaked"),
+    it("does not extend that exemption to any other address-shaped value", () => {
+      // The entry is anchored to one exact address. A different 0x value in the
+      // same position must still be scanned, so the exemption can never widen
+      // into "any hex blob next to a token-ish identifier".
+      workDir = mkdtempSync(join(tmpdir(), "gitleaks-otheraddr-"));
+      mkdirSync(join(workDir, "src"), { recursive: true });
       // Built from parts (never a contiguous literal in this source file) so
-      // this test file itself doesn't trip the very rule it's testing.
-      [
-        "DATABASE_URL=postgres://orchard_migrator:",
-        "not_a_real_password_123",
-        "@localhost:5432/orchard\n",
-      ].join(""),
-    );
+      // this test file does not itself trip the rule it is testing - same
+      // reason as the DATABASE_URL case below.
+      const otherAddress = ["0xAbCd1234567890fEdCbA", "0987654321aAbBcCdDeE"].join("");
+      writeFileSync(
+        join(workDir, "src", "spend.ts"),
+        `const DEFAULT_SPEND_TOKEN_ADDRESS = "${otherAddress}";\n`,
+      );
 
-    const result = scanDir(workDir);
-    expect(result.leaksFound).toBe(true);
-    expect(result.ruleIds).toContain("postgres-connection-string-password");
-  });
+      expect(scanDir(workDir).leaksFound).toBe(true);
+    });
 
-  it("finds no leaks scanning this repository's own committed history", () => {
-    const result = scanRepoHistory();
-    expect(result.leaksFound).toBe(false);
-  });
-});
+    it("flags a fake DATABASE_URL with an embedded password", () => {
+      workDir = mkdtempSync(join(tmpdir(), "gitleaks-dburl-"));
+      writeFileSync(
+        join(workDir, ".env.leaked"),
+        // Built from parts (never a contiguous literal in this source file) so
+        // this test file itself doesn't trip the very rule it's testing.
+        [
+          "DATABASE_URL=postgres://orchard_migrator:",
+          "not_a_real_password_123",
+          "@localhost:5432/orchard\n",
+        ].join(""),
+      );
+
+      const result = scanDir(workDir);
+      expect(result.leaksFound).toBe(true);
+      expect(result.ruleIds).toContain("postgres-connection-string-password");
+    });
+
+    it("flags a provider secret dropped into the web app's source (F003)", () => {
+      // apps/ is new in F003 and the config has no path allowlist, so this
+      // proves the rules reach the new tree rather than only packages/tools.
+      workDir = mkdtempSync(join(tmpdir(), "gitleaks-apps-"));
+      mkdirSync(join(workDir, "apps", "web", "src", "server"), { recursive: true });
+      writeFileSync(
+        join(workDir, "apps", "web", "src", "server", "leak.ts"),
+        `export const key = { BINANCE_WEB3_API_KEY: "${FAKE_SECRET}" };\n`,
+      );
+
+      const result = scanDir(workDir);
+      expect(result.leaksFound).toBe(true);
+      expect(result.ruleIds).toContain("binance-web3-api-key");
+    });
+
+    it("flags a provider secret even when prefixed NEXT_PUBLIC_ (F003)", () => {
+      // NEXT_PUBLIC_ is the exact mistake that would inline a server secret into
+      // the client bundle. The rules are substring matches, so the prefix cannot
+      // be used to smuggle one past them - this pins that.
+      workDir = mkdtempSync(join(tmpdir(), "gitleaks-nextpublic-"));
+      mkdirSync(join(workDir, "apps", "web"), { recursive: true });
+      writeFileSync(
+        join(workDir, "apps", "web", ".env.local"),
+        `NEXT_PUBLIC_BINANCE_WEB3_API_SECRET=${FAKE_SECRET}\n`,
+      );
+
+      const result = scanDir(workDir);
+      expect(result.leaksFound).toBe(true);
+      expect(result.ruleIds).toContain("binance-web3-api-secret");
+    });
+
+    it("finds no leaks scanning this repository's own committed history", () => {
+      const result = scanRepoHistory();
+      expect(result.leaksFound).toBe(false);
+    });
+  },
+);

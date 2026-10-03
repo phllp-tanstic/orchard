@@ -20,7 +20,11 @@ env:
 
 jobs:
   build-test:
-    runs-on: ubuntu-latest
+    # Pinned deliberately, NOT ubuntu-latest: GitHub begins migrating
+    # ubuntu-latest to Ubuntu 26 on 2026-10-19, and a runner image changing
+    # under us is a build that breaks for a reason nobody chose. The owner
+    # moves this on purpose, after a green run on the new image.
+    runs-on: ubuntu-24.04
     services:
       postgres:
         # postgres:17.11 as of 2026-09-21; pinned by digest, matches docker-compose.yml.
@@ -37,7 +41,7 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24; v4.4.0 was node20)
 
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
@@ -94,19 +98,100 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # No --passWithNoTests: this suite has hundreds of tests, so a run that
+      # collects none means the config broke, and that must fail the build. (It
+      # was previously written as `pnpm test -- --passWithNoTests`, where pnpm
+      # forwards the `--` literally and vitest parked the flag in argv["--"],
+      # leaving it inert - the step passed on its real tests, not on the flag.)
       - name: Unit tests
-        run: pnpm test -- --passWithNoTests
+        run: pnpm test
+
+      # F003 T1: build the web app. `pnpm web:build` now runs the client-bundle
+      # secret scan as a POST-BUILD step (hardening item 4), so a leak fails the
+      # build itself rather than waiting for a later job - and the same thing
+      # happens on a host, which does not run this workflow at all. The scan
+      # reads secret values from the process environment as well as from .env,
+      # which is what makes it meaningful here: CI has no .env.
+      #
+      # These placeholder credentials are obviously fake and are never real
+      # keys. BINANCE_WEB3_BASE_URL points at a closed local port on purpose:
+      # AGENTS.md forbids live provider calls in CI, so no request must be able
+      # to reach the provider even by accident. The app fails closed on the
+      # provider check, which is exactly what the stub browser tests assert.
+      - name: Build web app (includes the client bundle secret scan)
+        run: pnpm web:build
+        env:
+          BINANCE_WEB3_API_KEY: "(ci build placeholder, not a key)"
+          BINANCE_WEB3_API_SECRET: "(ci build placeholder, not a secret)"
+          BINANCE_WEB3_BASE_URL: http://127.0.0.1:9
+          TARGET_BINANCE_CHAIN_ID: "56"
+          EVIDENCE_REDACTION_SALT: "(ci build placeholder, not a salt)"
+
+      # Runs the scanner against planted sentinels in a temp directory, not just
+      # against the real bundle: a scanner only ever run on a clean tree has
+      # never been shown to detect anything.
+      #
+      # No `--` before the path. pnpm forwards `--` literally, vitest then parks
+      # what follows in argv["--"] instead of using it as a filter, and this step
+      # silently ran the ENTIRE unit suite (38 files) rather than the one file
+      # its name promises. Measured both ways: with `--`, 38 files; without, 1.
+      - name: Client bundle scan negative controls
+        run: pnpm test apps/web/src/server/bundle-scan.test.ts
+
+      - name: Web component tests
+        run: pnpm test:web
 
       - name: Migration up
         run: pnpm migrate:up
 
       - name: Integration tests against Postgres service container
-        run: pnpm test:integration -- --passWithNoTests
+        run: pnpm test:integration
 
-      - name: Migration down
-        run: pnpm migrate:down
+      # F003 hardening item 6: the STUBBED browser subset only. No live
+      # provider call: these tests either intercept /api/previews inside the
+      # browser or exercise pages and endpoints that read the database and the
+      # local configuration. The @live tests stay owner-run (AGENTS.md).
+      #
+      # The universe comes from an obviously synthetic seed, written through the
+      # same writer the real pipeline uses, with ticker SYNTH - never a real
+      # ticker, so a seeded row can never be mistaken for a real observation.
+      - name: Install Playwright Chromium
+        run: pnpm --filter @orchard/web exec playwright install --with-deps chromium
+
+      - name: Seed the synthetic universe (test fixture, no provider call)
+        run: pnpm seed:synthetic-universe
         env:
-          ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION: "1"
+          EVIDENCE_REDACTION_SALT: "(ci build placeholder, not a salt)"
+
+      - name: Browser tests (stubbed provider subset)
+        run: pnpm test:e2e:stub
+        env:
+          BINANCE_WEB3_API_KEY: "(ci build placeholder, not a key)"
+          BINANCE_WEB3_API_SECRET: "(ci build placeholder, not a secret)"
+          BINANCE_WEB3_BASE_URL: http://127.0.0.1:9
+          TARGET_BINANCE_CHAIN_ID: "56"
+          EVIDENCE_REDACTION_SALT: "(ci build placeholder, not a salt)"
+          ORCHARD_E2E_TICKER: SYNTH
+          ORCHARD_WEB_E2E_PORT: "3100"
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1 (node24; v4.6.2 was node20)
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
+
+      # Full rollback now needs its own verb and its own permission: a bare
+      # `migrate down` is refused, because it used to roll back EVERY migration
+      # and that is how a local evidence database was destroyed (item 5).
+      - name: Migration reset (full rollback, throwaway CI database)
+        # No `--`: pnpm forwards it literally, so db/migrate.ts saw
+        # `reset -- --confirm X` and refused (CI #76). The CLI now also ignores a
+        # standalone `--`, but the command is written correctly here regardless.
+        run: pnpm migrate:reset --confirm "$POSTGRES_DB"
+        env:
+          ORCHARD_ALLOW_FULL_RESET: "1"
 
       - name: Migration up again (idempotency check)
         run: pnpm migrate:up
@@ -119,7 +204,11 @@ jobs:
   # so this also doubles as CI coverage of that property.
   integration-stress:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    # Pinned deliberately, NOT ubuntu-latest: GitHub begins migrating
+    # ubuntu-latest to Ubuntu 26 on 2026-10-19, and a runner image changing
+    # under us is a build that breaks for a reason nobody chose. The owner
+    # moves this on purpose, after a green run on the new image.
+    runs-on: ubuntu-24.04
     services:
       postgres:
         # postgres:17.11 as of 2026-09-21; pinned by digest, matches docker-compose.yml.
@@ -136,7 +225,7 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24; v4.4.0 was node20)
 
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
