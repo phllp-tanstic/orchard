@@ -128,3 +128,51 @@ describe("db/migrate.ts refuses a count-less rollback through the real CLI (item
     expect(stderr).toMatch(/down <count>/);
   });
 });
+
+/**
+ * CI #76: `pnpm migrate:reset -- --confirm X` failed, because pnpm forwards the
+ * `--` to the script literally and the CLI saw `reset -- --confirm X`.
+ *
+ * These go through the real spawned CLI rather than the planner, because the
+ * separator is introduced by the SHELL and the runner - the exact layer a pure
+ * unit test cannot observe.
+ */
+describe("db/migrate.ts tolerates the argument separator pnpm forwards (CI #76)", () => {
+  it("gets PAST the confirmation check with `reset -- --confirm <db>`", () => {
+    const { stderr } = runMigrate(["reset", "--", "--confirm", "unused"], {
+      DATABASE_URL: FAKE_DATABASE_URL,
+      ORCHARD_ALLOW_FULL_RESET: undefined,
+    });
+    // It must now fail on the PERMISSION, not on the confirmation - proving the
+    // separator no longer swallows the arguments behind it.
+    expect(stderr).toMatch(/ORCHARD_ALLOW_FULL_RESET=1/);
+    expect(stderr).not.toMatch(/without confirmation/);
+  });
+
+  it("gets PAST the count check with `down -- 1`", () => {
+    const { stderr } = runMigrate(["down", "--", "1"], {
+      DATABASE_URL: FAKE_DATABASE_URL,
+      ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION: undefined,
+    });
+    expect(stderr).toMatch(/ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION/);
+    expect(stderr).not.toMatch(/no count/);
+  });
+
+  it("still refuses a count-less `down --`", () => {
+    const { status, stderr } = runMigrate(["down", "--"], {
+      DATABASE_URL: FAKE_DATABASE_URL,
+      ORCHARD_ALLOW_DESTRUCTIVE_MIGRATION: "1",
+    });
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/no count/);
+  });
+
+  it("still refuses the WRONG database name behind a separator", () => {
+    const { status, stderr } = runMigrate(["reset", "--", "--confirm", "orchard"], {
+      DATABASE_URL: FAKE_DATABASE_URL,
+      ORCHARD_ALLOW_FULL_RESET: "1",
+    });
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/must match exactly/);
+  });
+});

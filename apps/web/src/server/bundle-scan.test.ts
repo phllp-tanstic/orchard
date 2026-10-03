@@ -10,6 +10,7 @@ import {
   MIN_SECRET_VALUE_LENGTH,
   collectSecretValues,
   formatFindings,
+  productionBuildProblem,
   scanClientBundle,
 } from "./bundle-scan";
 
@@ -175,6 +176,50 @@ describe("negative controls: the scan actually detects a planted leak", () => {
   });
 });
 
+describe("productionBuildProblem: refuse to judge a non-production build", () => {
+  // An injected `exists` keeps these about the RULE rather than about whatever
+  // happens to be in .next on this machine right now.
+  const present =
+    (...paths: string[]) =>
+    (p: string) =>
+      paths.includes(p);
+
+  it("accepts a completed production build", () => {
+    expect(
+      productionBuildProblem(".next", present(".next", join(".next", "BUILD_ID"))),
+    ).toBeUndefined();
+  });
+
+  it("REFUSES a development build, naming the reason", () => {
+    // The case that actually happened: a `next dev` server had overwritten
+    // .next, and the scan reported `privateKey` from a Babel helper that ships
+    // only in dev. A verdict about a dev bundle is worthless either way.
+    const problem = productionBuildProblem(
+      ".next",
+      present(".next", join(".next", "static", "development"), join(".next", "BUILD_ID")),
+    );
+    expect(problem).toContain("DEVELOPMENT build");
+    expect(problem).toContain("next build");
+  });
+
+  it("REFUSES a build with no BUILD_ID, which means it never completed", () => {
+    const problem = productionBuildProblem(".next", present(".next"));
+    expect(problem).toContain("BUILD_ID");
+  });
+
+  it("REFUSES a missing directory", () => {
+    expect(productionBuildProblem(".next", () => false)).toContain("does not exist");
+  });
+
+  it("checks the dev marker BEFORE BUILD_ID, since a dev build can leave both", () => {
+    const problem = productionBuildProblem(
+      ".next",
+      present(".next", join(".next", "static", "development")),
+    );
+    expect(problem).toContain("DEVELOPMENT build");
+  });
+});
+
 describe("collectSecretValues", () => {
   it("takes values from the PROCESS ENVIRONMENT", () => {
     // On a host there is no .env - the platform injects the environment - and
@@ -237,8 +282,18 @@ describe("collectSecretValues", () => {
   });
 });
 
-function ensureBuilt(): void {
-  if (existsSync(CLIENT_DIR)) return;
+/**
+ * Builds when there is no PRODUCTION build to scan - not merely when `.next`
+ * is missing.
+ *
+ * `next dev` writes into the same directory, so a developer who has run the
+ * dev server leaves behind a dev bundle that the old check accepted. It then
+ * reported `privateKey` from a Babel helper that ships only in dev, which is a
+ * finding about nothing, and it would equally have reported a clean result
+ * about bytes no browser is ever served.
+ */
+function ensureProductionBuild(): void {
+  if (productionBuildProblem(NEXT_DIR) === undefined) return;
   execFileSync("pnpm", ["--filter", "@orchard/web", "build"], {
     cwd: REPO_ROOT,
     stdio: "inherit",
@@ -246,8 +301,8 @@ function ensureBuilt(): void {
   });
 }
 
-describe("the REAL client bundle contains no secrets and no signing code", () => {
-  ensureBuilt();
+describe("the REAL production client bundle contains no secrets and no signing code", () => {
+  ensureProductionBuild();
 
   const envPath = join(REPO_ROOT, ".env");
   const result = scanClientBundle({

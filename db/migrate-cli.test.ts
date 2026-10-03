@@ -170,6 +170,51 @@ describe("reset refuses unless it is unmistakably intended", () => {
   });
 });
 
+describe("a standalone `--` is ignored (CI #76)", () => {
+  it("accepts `reset -- --confirm <db>`, which is what pnpm actually forwards", () => {
+    // pnpm passes `--` to the script literally, so the natural command line
+    // arrives with it still in place. Refusing that is a trap, not a guard.
+    expect(planMigration(["reset", "--", "--confirm", DB], ALLOW_RESET, DB)).toEqual({
+      action: "reset",
+    });
+  });
+
+  it("accepts `down -- 1`", () => {
+    expect(planMigration(["down", "--", "1"], ALLOW_DOWN, DB)).toEqual({
+      action: "down",
+      count: 1,
+    });
+  });
+
+  it("accepts a leading `--` before the verb", () => {
+    expect(planMigration(["--", "up"], {}, DB)).toEqual({ action: "up" });
+  });
+
+  it("still enforces every refusal with the separator present", () => {
+    // Tolerating `--` must not become a way around the checks.
+    expect(refusal(["down", "--"], ALLOW_DOWN).code).toBe("DOWN_WITHOUT_COUNT");
+    expect(refusal(["down", "--", "all"], ALLOW_DOWN).code).toBe("DOWN_BAD_COUNT");
+    expect(refusal(["down", "--", "1"], {}).code).toBe("DOWN_NOT_ALLOWED");
+    expect(refusal(["reset", "--"], ALLOW_RESET).code).toBe("RESET_WITHOUT_CONFIRM");
+    expect(refusal(["reset", "--", "--confirm", "wrong"], ALLOW_RESET, DB).code).toBe(
+      "RESET_NAME_MISMATCH",
+    );
+    expect(refusal(["reset", "--", "--confirm", DB], {}).code).toBe("RESET_NOT_ALLOWED");
+  });
+
+  it("removes only ONE separator, so a doubled one still fails", () => {
+    // Two separators is a genuinely malformed command, and guessing at the
+    // intent behind a destructive operation is the wrong instinct.
+    expect(refusal(["reset", "--", "--", "--confirm", DB], ALLOW_RESET).code).toBe(
+      "RESET_WITHOUT_CONFIRM",
+    );
+  });
+
+  it("does not treat `--confirm` itself as a separator", () => {
+    expect(refusal(["reset", "--confirm"], ALLOW_RESET).code).toBe("RESET_WITHOUT_CONFIRM");
+  });
+});
+
 describe("unknown commands", () => {
   it.each([[[]], [["sideways"]], [["DOWN"]], [["--help"]], [["up2"]], [[""]]])(
     "REFUSES %j with usage",

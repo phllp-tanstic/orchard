@@ -94,8 +94,13 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # No --passWithNoTests: this suite has hundreds of tests, so a run that
+      # collects none means the config broke, and that must fail the build. (It
+      # was previously written as `pnpm test -- --passWithNoTests`, where pnpm
+      # forwards the `--` literally and vitest parked the flag in argv["--"],
+      # leaving it inert - the step passed on its real tests, not on the flag.)
       - name: Unit tests
-        run: pnpm test -- --passWithNoTests
+        run: pnpm test
 
       # F003 T1: build the web app. `pnpm web:build` now runs the client-bundle
       # secret scan as a POST-BUILD step (hardening item 4), so a leak fails the
@@ -121,17 +126,22 @@ jobs:
       # Runs the scanner against planted sentinels in a temp directory, not just
       # against the real bundle: a scanner only ever run on a clean tree has
       # never been shown to detect anything.
+      #
+      # No `--` before the path. pnpm forwards `--` literally, vitest then parks
+      # what follows in argv["--"] instead of using it as a filter, and this step
+      # silently ran the ENTIRE unit suite (38 files) rather than the one file
+      # its name promises. Measured both ways: with `--`, 38 files; without, 1.
       - name: Client bundle scan negative controls
-        run: pnpm test -- apps/web/src/server/bundle-scan.test.ts
+        run: pnpm test apps/web/src/server/bundle-scan.test.ts
 
       - name: Web component tests
-        run: pnpm test:web -- --passWithNoTests
+        run: pnpm test:web
 
       - name: Migration up
         run: pnpm migrate:up
 
       - name: Integration tests against Postgres service container
-        run: pnpm test:integration -- --passWithNoTests
+        run: pnpm test:integration
 
       # F003 hardening item 6: the STUBBED browser subset only. No live
       # provider call: these tests either intercept /api/previews inside the
@@ -172,7 +182,10 @@ jobs:
       # `migrate down` is refused, because it used to roll back EVERY migration
       # and that is how a local evidence database was destroyed (item 5).
       - name: Migration reset (full rollback, throwaway CI database)
-        run: pnpm migrate:reset -- --confirm "$POSTGRES_DB"
+        # No `--`: pnpm forwards it literally, so db/migrate.ts saw
+        # `reset -- --confirm X` and refused (CI #76). The CLI now also ignores a
+        # standalone `--`, but the command is written correctly here regardless.
+        run: pnpm migrate:reset --confirm "$POSTGRES_DB"
         env:
           ORCHARD_ALLOW_FULL_RESET: "1"
 

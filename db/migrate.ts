@@ -126,11 +126,34 @@ export type MigrationPlan =
  * variable, and the database NAME typed back. Nobody reaches a full reset by
  * repeating a command they have run before.
  */
+/**
+ * Drops ONE standalone `--` from the arguments.
+ *
+ * pnpm forwards `--` to the script literally, so the natural
+ * `pnpm migrate:reset -- --confirm orchard` arrives here as
+ * `["reset", "--", "--confirm", "orchard"]` and was refused for lacking a
+ * confirmation. That is a trap, not a safety feature: the operator typed the
+ * right thing. It cost a CI run (#76) before it cost anyone a worse mistake.
+ *
+ * Exactly one is removed. A second `--` is left in place and will fail
+ * validation, because at that point the command really is malformed and
+ * guessing at the intent of a destructive operation is the wrong instinct.
+ *
+ * `pnpm route:probe` already does this for the same reason.
+ */
+function withoutArgSeparator(argv: readonly string[]): string[] {
+  const args = [...argv];
+  const index = args.indexOf("--");
+  if (index !== -1) args.splice(index, 1);
+  return args;
+}
+
 export function planMigration(
-  argv: readonly string[],
+  rawArgv: readonly string[],
   env: Record<string, string | undefined>,
   actualDatabaseName: string,
 ): MigrationPlan {
+  const argv = withoutArgSeparator(rawArgv);
   const action = argv[0];
 
   if (action === "up") return { action: "up" };

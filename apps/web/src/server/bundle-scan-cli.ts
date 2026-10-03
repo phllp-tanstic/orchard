@@ -1,7 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectSecretValues, formatFindings, scanClientBundle } from "./bundle-scan.js";
+import {
+  collectSecretValues,
+  formatFindings,
+  productionBuildProblem,
+  scanClientBundle,
+} from "./bundle-scan.js";
 
 /**
  * Post-build client-bundle scan (F003 hardening item 4).
@@ -24,6 +29,15 @@ const NEXT_DIR = join(WEB_ROOT, ".next");
 const CLIENT_DIR = join(NEXT_DIR, "static");
 
 function main(): void {
+  // A verdict about a development bundle is worthless in both directions, so
+  // refuse to render one rather than report a finding about a dev-only vendor
+  // chunk or a clean result about bytes nobody is served.
+  const problem = productionBuildProblem(NEXT_DIR);
+  if (problem !== undefined) {
+    console.error(`client bundle scan: ${problem}`);
+    process.exit(1);
+  }
+
   if (!existsSync(CLIENT_DIR)) {
     console.error(
       `client bundle scan: ${CLIENT_DIR} does not exist. Run the build before scanning.`,
