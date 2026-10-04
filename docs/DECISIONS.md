@@ -329,6 +329,57 @@ Status vocabulary for decisions: `APPROVED`, `OPEN`.
 - **Supersedes:** the 300 bps default set by DEC-037.
 - **Merged:** not yet - branch `feat/dec-038-reference-deviation-500`.
 
+### DEC-041
+
+- **Status:** APPROVED
+- **Date:** 2026-10-03
+- **Decision:** Hosting is **Render**, region **Frankfurt**, plan **starter**, with
+  **exactly one instance** (`numInstances: 1`). Confirms the recommendation in
+  `docs/specs/F003-spec.md` section 9, which was recorded there as awaiting owner
+  confirmation. Unblocks F003 T0 and T5.
+- **Reason:** the provider checks both the client IP and the server location and blocks a
+  documented region list (US and territories, CA, NL, GB, IR, CU, KP, Crimea, DPR, LPR, and
+  JP conditionally). Of Render's five regions only Frankfurt and Singapore sit outside it,
+  and Frankfurt is the nearer of the two to the owner. A free instance is not usable because
+  it sleeps after inactivity. One instance is a **correctness** requirement, not a cost
+  choice: the rate limiter, the single-flight and the concurrency budget are all in-process
+  (`apps/web/src/server/guards.ts`) while the provider's limit is per API key, so a second
+  instance would double the budget against a limit that did not move (F003 section 4).
+  `/api/capabilities` reports `singleServerInstanceAssumed` so the assumption stays visible.
+- **Artifacts:** `Dockerfile`, `.dockerignore`, `render.yaml`, `docs/DEPLOYMENT.md`.
+  `healthCheckPath` is `/api/live` (liveness, touches no dependency), not `/api/health`,
+  which would restart the app whenever the provider or the database had a bad minute.
+  `autoDeploy` is false: the repository is public and a push is not an approval.
+- **UNVERIFIED:** whether the provider accepts authenticated calls from Render's Frankfurt
+  egress IP range. Nothing in this repository has measured it, and no deploy has been made.
+  F003 T0 is the measurement; a region or auth block is a stop condition, not a thing to
+  work around.
+- **Merged:** not yet - branch `feat/f003-deploy-artifacts`.
+
+### DEC-042
+
+- **Status:** APPROVED
+- **Date:** 2026-10-03
+- **Decision:** The production database is **Supabase**, in the Frankfurt region, reached
+  through the **session pooler on port 5432**. Not the transaction pooler on 6543. Narrows
+  DEC-002, which chose Supabase for production and staging without naming a connection mode.
+- **Reason:** the app holds a long-lived `pg` pool (`apps/web/src/server/db.ts`) and
+  `node-pg-migrate` runs a whole batch inside one transaction with advisory locks. The
+  transaction pooler does not support either shape.
+- **Role separation, unchanged and enforced here:** the running app gets
+  `ORCHARD_APP_DATABASE_URL` as `orchard_app` - `SELECT` and `INSERT` only. The migrator URL
+  (`DATABASE_URL`, the role that owns every schema) is **never** entered into Render, never
+  present in an image layer, and is set inline on the owner's machine for a single command.
+  `render.yaml` states this and `docs/DEPLOYMENT.md` gives the procedure.
+- **UNVERIFIED:** DEC-014's role bootstrap (migration 007, which creates `orchard_migrator`
+  and reassigns ownership of every `evidence`/`rwa` object to it) has **never been run
+  against Supabase**. DEC-014 was verified against this repository's dev/CI Postgres and a
+  throwaway container, neither of which is Supabase, whose `postgres` role is not a
+  superuser. Also unverified: whether a migration-created role is addressed through the
+  pooler as `orchard_app.<project-ref>` or as plain `orchard_app`. Both are called out in
+  `docs/DEPLOYMENT.md`.
+- **Merged:** not yet - branch `feat/f003-deploy-artifacts`.
+
 ## Open
 
 ### DEC-003

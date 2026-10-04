@@ -81,6 +81,22 @@ const schema = z.object({
    * traffic must be bounded well below that (F003 T2).
    */
   WEB_MAX_CONCURRENT_PREVIEWS: z.coerce.number().int().positive().default(2),
+  /**
+   * Enables GET /api/diag when - and only when - it is set. That route exists
+   * to MEASURE the host: how long an X-Forwarded-For chain actually arrives,
+   * and therefore whether WEB_TRUSTED_PROXY_HOPS above is right for this
+   * deployment. The question cannot be answered from a host's documentation,
+   * only from the running host.
+   *
+   * Unset by default, so the route does not exist in an ordinary deployment.
+   * A minimum length is enforced because this token is the route's only
+   * protection and a short one would be guessable. docs/DEPLOYMENT.md says to
+   * unset it again once the first deploy check is done.
+   */
+  WEB_DIAG_TOKEN: z
+    .string()
+    .min(24, "WEB_DIAG_TOKEN must be at least 24 characters, or unset entirely")
+    .optional(),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 

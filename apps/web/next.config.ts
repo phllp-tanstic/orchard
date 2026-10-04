@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 
 /**
@@ -20,8 +21,21 @@ import type { NextConfig } from "next";
 const standalone =
   process.env["ORCHARD_WEB_FORCE_STANDALONE"] === "1" || process.platform !== "win32";
 
+/**
+ * The monorepo root, stated rather than inferred.
+ *
+ * Standalone output traces files relative to a root Next guesses from the
+ * nearest lockfile. The guess is usually right and the layout it produces is
+ * what the Dockerfile copies from, so a silent change of guess would move
+ * `server.js` and break the image at run time rather than at build time. In a
+ * pnpm workspace the traced graph also reaches into the root
+ * `node_modules/.pnpm` store, which only lands in the output when the root is
+ * the workspace root.
+ */
+const workspaceRoot = fileURLToPath(new URL("../../", import.meta.url));
+
 const nextConfig: NextConfig = {
-  ...(standalone ? { output: "standalone" as const } : {}),
+  ...(standalone ? { output: "standalone" as const, outputFileTracingRoot: workspaceRoot } : {}),
   /**
    * The workspace libraries are consumed as TypeScript SOURCE, not as built
    * output, so Next has to compile them.

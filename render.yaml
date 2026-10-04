@@ -1,0 +1,193 @@
+# Render Blueprint for Orchard (DEC-041, DEC-042).
+#
+# DEC-041: Render, region frankfurt, plan starter, exactly ONE instance.
+# DEC-042: the production database is Supabase, reached through the SESSION
+# pooler on port 5432.
+#
+# Frankfurt is not a preference. The provider blocks a documented list of
+# regions (US and territories, CA, NL, GB, IR, CU, KP, Crimea, DPR, LPR, and
+# JP conditionally) and checks BOTH the client IP and the server location, so
+# of Render's five regions only Frankfurt and Singapore are outside it
+# (F003 spec section 2). Whether the provider actually accepts calls from
+# Render's Frankfurt egress is UNVERIFIED until the first deploy measures it.
+#
+# numInstances is 1 because the rate limiter, the single-flight and the
+# concurrency budget are all IN-PROCESS (apps/web/src/server/guards.ts) while
+# the provider's limit is per API key. A second instance would silently double
+# the budget against a limit that did not move. F003 section 4 states this as a
+# hard rule, and /api/capabilities reports `singleServerInstanceAssumed` so the
+# assumption is visible rather than tacit.
+#
+# healthCheckPath is /api/live, the LIVENESS probe, which touches no dependency.
+# Pointing a host's health check at /api/health instead would restart the app
+# whenever the provider or the database had a bad minute - turning somebody
+# else's outage into a restart loop. /api/health stays the readiness answer a
+# human or a monitor reads.
+#
+# autoDeploy is false: a deploy is an owner action, taken after the gates are
+# green, not a side effect of a push to a public repository.
+#
+# EVERY secret below is `sync: false`, which means Render does NOT read a value
+# from this file - the owner types it into the dashboard once, and the value
+# never exists in this repository, in an image layer, or in a build log.
+# Non-secret values are stated explicitly rather than left to the schema
+# defaults in apps/web/src/server/env.ts, so that what production runs on is
+# reviewable here instead of having to be inferred from code.
+
+services:
+  - type: web
+    name: orchard-web
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    numInstances: 1
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/live
+    autoDeploy: false
+    envVars:
+      # --- secrets. Entered in the Render dashboard, never here. ------------
+      #
+      # The provider credentials. Server-side only: the client-bundle scan in
+      # apps/web/src/server/bundle-scan.ts fails the build if either name or
+      # either value reaches browser output.
+      - key: BINANCE_WEB3_API_KEY
+        sync: false
+      - key: BINANCE_WEB3_API_SECRET
+        sync: false
+      #
+      # The application's database connection, as the LEAST-PRIVILEGED role.
+      # This must be the `orchard_app` role - SELECT and INSERT only, no UPDATE
+      # and no DELETE anywhere (db/migrations/001_schemas_and_roles.up.sql) -
+      # reached through the Supabase SESSION pooler on port 5432 (DEC-042).
+      #
+      # The MIGRATOR connection (DATABASE_URL, the role that owns every schema
+      # and can drop them) is deliberately ABSENT from this service. Migrations
+      # are run by the owner from their own machine with the URL set inline for
+      # one command, never stored and never granted to the running app. If you
+      # find yourself adding DATABASE_URL here, stop: the app does not need it,
+      # and nothing that serves public traffic should hold it.
+      - key: ORCHARD_APP_DATABASE_URL
+        sync: false
+      #
+      # Salt for hashing sensitive request parameters before they are written
+      # to evidence.redacted_request. Changing it silently breaks correlation
+      # with every previously stored row, so set it once and keep it.
+      - key: EVIDENCE_REDACTION_SALT
+        sync: false
+      #
+      # OPTIONAL and normally UNSET. Setting it enables GET /api/diag, which
+      # reports how long an X-Forwarded-For chain actually arrives at this
+      # process so WEB_TRUSTED_PROXY_HOPS below can be set from evidence rather
+      # than guessed. At least 24 characters (env.ts enforces this). UNSET IT
+      # AGAIN once the first deploy check is done - see docs/DEPLOYMENT.md.
+      - key: WEB_DIAG_TOKEN
+        sync: false
+
+      # --- non-secret configuration. Stated, not defaulted. -----------------
+      - key: NODE_ENV
+        value: production
+      - key: BINANCE_WEB3_BASE_URL
+        value: https://web3.binance.com/build
+      - key: TARGET_BINANCE_CHAIN_ID
+        value: "56"
+      # A public BSC burn address. Nothing is ever signed for it; it is sent as
+      # userWalletAddress on read-only quote calls.
+      - key: PROBE_WALLET_ADDRESS
+        value: "0x000000000000000000000000000000000000dEaD"
+
+      # Product defaults, not measured provider limits. /api/capabilities
+      # reports them as `amountBoundsAreProductDefaults` and
+      # `rateLimitsAreProductDefaults` so the UI never presents them as facts
+      # about the provider.
+      - key: WEB_MIN_AMOUNT_USDT
+        value: "5"
+      - key: WEB_MAX_AMOUNT_USDT
+        value: "1000"
+      - key: WEB_SNAPSHOT_MAX_AGE_SECONDS
+        value: "21600"
+
+      # Preview budget: strict, because one preview costs one authenticated
+      # quote PER representation (two for a typical ticker) against a provider
+      # limit of 5 req/s per endpoint.
+      - key: WEB_RATE_LIMIT_MAX
+        value: "10"
+      - key: WEB_RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      # Read budget: a separate, looser bucket for /api/assets, /api/health and
+      # /api/capabilities, which cost the provider nothing. Sharing one bucket
+      # would let a page that polls health exhaust a visitor's preview budget.
+      - key: WEB_READ_RATE_LIMIT_MAX
+        value: "60"
+      - key: WEB_READ_RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      - key: WEB_PROVIDER_CHECK_TTL_SECONDS
+        value: "60"
+      - key: WEB_MAX_CONCURRENT_PREVIEWS
+        value: "2"
+
+      # UNVERIFIED on Render. The client IP is taken as the Nth
+      # X-Forwarded-For entry FROM THE RIGHT, because a client can send its own
+      # header and a proxy appends to it. 1 assumes a single platform router in
+      # front of this process. If Render adds a second hop, this value is wrong
+      # in a way that silently weakens rate limiting, which is exactly what
+      # /api/diag exists to measure. Confirm it on the first deploy and correct
+      # it here. Too high or too low both degrade to one shared bucket rather
+      # than trusting a client-supplied value, so neither is a security hole -
+      # but neither is correct either.
+      - key: WEB_TRUSTED_PROXY_HOPS
+        value: "1"
+
+      # PORT is intentionally NOT declared: Render injects it, and the
+      # standalone Next server reads PORT and HOSTNAME (the image sets
+      # HOSTNAME=0.0.0.0 so the platform router can reach the container).
+
+# ---------------------------------------------------------------------------
+# OWNER OPT-IN, NOT ENABLED.
+#
+# A scheduled `pnpm universe:refresh` every 3 hours, which keeps the stored RWA
+# snapshot inside WEB_SNAPSHOT_MAX_AGE_SECONDS (21600s = 6h) so /api/health
+# reports the universe fresh and /api/capabilities reports rwaDiscovery true
+# without the owner refreshing by hand.
+#
+# It is COMMENTED OUT on purpose. A cron job on Render is a separately billed
+# service, and applying this blueprint with the block live would create and
+# charge for it without the owner ever choosing to. CONFIRM THE COST ON
+# RENDER'S OWN PRICING PAGE FIRST - this repository does not state Render's
+# prices, because a price written here is a price that goes stale.
+# docs/DEPLOYMENT.md says the same.
+#
+# To opt in: uncomment the block, enter the three secrets in the dashboard, and
+# re-apply the blueprint.
+#
+# It uses Dockerfile.jobs, not Dockerfile: the web image ships Next's
+# standalone bundle and has no pnpm, no tsx and no tools/, so it cannot run a
+# workspace script.
+#
+# Note what it does NOT get: no DATABASE_URL. The refresh connects as
+# orchard_app like the app does, because INSERT is all it needs.
+#
+#  - type: cron
+#    name: orchard-universe-refresh
+#    runtime: docker
+#    region: frankfurt
+#    plan: starter
+#    dockerfilePath: ./Dockerfile.jobs
+#    dockerContext: .
+#    # Every 3 hours, on the hour, UTC.
+#    schedule: "0 */3 * * *"
+#    dockerCommand: pnpm universe:refresh
+#    autoDeploy: false
+#    envVars:
+#      - key: BINANCE_WEB3_API_KEY
+#        sync: false
+#      - key: BINANCE_WEB3_API_SECRET
+#        sync: false
+#      - key: ORCHARD_APP_DATABASE_URL
+#        sync: false
+#      - key: EVIDENCE_REDACTION_SALT
+#        sync: false
+#      - key: BINANCE_WEB3_BASE_URL
+#        value: https://web3.binance.com/build
+#      - key: TARGET_BINANCE_CHAIN_ID
+#        value: "56"

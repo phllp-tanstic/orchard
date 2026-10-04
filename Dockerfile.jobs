@@ -1,0 +1,60 @@
+# Orchard scheduled jobs - `pnpm universe:refresh` (DEC-041, owner opt-in).
+#
+# A SEPARATE image from the web `Dockerfile`, deliberately. That image ships
+# Next's standalone bundle: no pnpm, no tsx, no `tools/`, no `db/`. It cannot
+# run a workspace script, and widening it so it could would put the whole
+# toolchain into the public-facing container for no benefit. This image is the
+# opposite trade: full workspace, run on a schedule, reachable by nobody.
+#
+# It is NOT referenced by an active service in render.yaml. The cron entry
+# there is commented out and the owner opts in after confirming the cost on
+# Render's pricing page (see docs/DEPLOYMENT.md).
+#
+# Read-only against the provider: /rwa/platforms, /rwa/tokens, /rwa/price.
+# Nothing is signed, swapped, submitted or broadcast. It connects as
+# orchard_app (ORCHARD_APP_DATABASE_URL), never as the migrator.
+#
+# Same digest-pinned base as Dockerfile. node:24-bookworm-slim as of 2026-10-03.
+ARG NODE_IMAGE=node@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
+
+FROM ${NODE_IMAGE} AS base
+ENV PNPM_HOME=/pnpm
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable && corepack prepare pnpm@12.5.1 --activate
+WORKDIR /repo
+
+FROM base AS deps
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY apps/web/package.json apps/web/
+COPY packages/binance/package.json packages/binance/
+COPY packages/evidence/package.json packages/evidence/
+COPY packages/execution/package.json packages/execution/
+COPY packages/rwa/package.json packages/rwa/
+COPY tools/probe/package.json tools/probe/
+COPY tools/probe-quote/package.json tools/probe-quote/
+COPY tools/route-probe/package.json tools/route-probe/
+# tsx and the workspace sources are what this job runs on, so devDependencies
+# stay. --ignore-scripts: husky's `prepare` wants a git repository, and
+# .dockerignore excludes .git.
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts
+
+FROM base AS runner
+
+ENV NODE_ENV=production
+
+COPY --from=deps /repo/node_modules ./node_modules
+COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
+COPY . .
+
+# No secret is baked in: every value the job needs (BINANCE_WEB3_API_KEY,
+# BINANCE_WEB3_API_SECRET, ORCHARD_APP_DATABASE_URL, EVIDENCE_REDACTION_SALT)
+# arrives from the host's secret store at run time, and the job fails closed
+# without them (tools/probe/src/universe-refresh-cli.ts `requireEnv`).
+
+RUN groupadd --system --gid 10001 orchard \
+ && useradd --system --uid 10001 --gid orchard --home-dir /repo --shell /usr/sbin/nologin orchard \
+ && chown -R orchard:orchard /repo
+USER orchard
+
+CMD ["pnpm", "universe:refresh"]
